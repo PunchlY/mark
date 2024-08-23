@@ -205,7 +205,7 @@ const unsubscribeQuery = db.query<null, [number]>(`DELETE FROM Subscribe WHERE i
 const findFeedQuery = db.query<{ id: number; title: string | null, category: string; }, [url: string]>(`SELECT Feed.id, Feed.title, Category.name category FROM Feed LEFT JOIN Category ON Feed.categoryId = Category.id WHERE url=?`);
 const insertFeedQuery = db.query<{ id: number; }, [url: string, category: number]>(`INSERT INTO Feed (url,categoryId) VALUES (?,?) RETURNING id`);
 const updateFeedCategoryQuery = db.query<null, [categoryId: number, id: number]>(`UPDATE Feed SET categoryId=? WHERE id=?`);
-const updateFeedQuery = db.query<null, [title: string, home_page_url: string | null, description: string | null, icon: string | null, authors: string | null, id: number]>(`UPDATE Feed SET title=?,homePage=?,description=?,icon=?,authors=? WHERE id=?`);
+const updateFeedQuery = db.query<null, [title: string, home_page_url: string | null, description: string | null, authors: string | null, id: number]>(`UPDATE Feed SET title=?,homePage=?,description=?,authors=? WHERE id=?`);
 
 const hasItemQuery = db.query<{ id: number; }, [key: string, feedId: number]>('SELECT id FROM Item WHERE key=?1 AND feedID=?2 UNION SELECT id FROM CleanedItem WHERE key=?1 AND feedID=?2');
 const insertItemQuery = db.query<null, [key: string, url: string | null, title: string | null, contentHtml: string | null, datePublished: string | null, authors: string | null, feedId: number]>(`INSERT INTO Item (key,url,title,contentHtml,datePublished,authors,feedId) VALUES (?,?,?,?,unixepoch(?),?,?)`);
@@ -342,10 +342,9 @@ class Subscribe extends Job {
             title,
             home_page_url,
             description,
-            icon,
             authors,
         } = await this.feedRewrite(await this.#fetch());
-        updateFeedQuery.run(title, home_page_url ?? null, description ?? null, icon ?? null, (authors && JSON.stringify(authors)) ?? null, this.#id!);
+        updateFeedQuery.run(title, home_page_url ?? null, description ?? null, (authors && JSON.stringify(authors)) ?? null, this.#id!);
         this.#title = title;
         console.log('[update]', `feedId=${this.#id}`);
     }
@@ -355,12 +354,11 @@ class Subscribe extends Job {
             title,
             home_page_url,
             description,
-            icon,
             authors,
             items,
         } = await this.feedRewrite(await this.#fetch());
         if (!this.#title)
-            updateFeedQuery.run(title, home_page_url ?? null, description ?? null, icon ?? null, (authors && JSON.stringify(authors)) ?? null, this.#id!);
+            updateFeedQuery.run(title, home_page_url ?? null, description ?? null, (authors && JSON.stringify(authors)) ?? null, this.#id!);
         const cleaner = await this.cleaner?.();
         for await (const item of items)
             await this.insert(item, cleaner?.unread);

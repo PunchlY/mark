@@ -7,7 +7,6 @@ type Data = {
     title: string;
     home_page_url?: string | null;
     description?: string | null;
-    icon?: string | null;
     items: {
         id: string,
         url?: string | null;
@@ -22,7 +21,6 @@ function Atom({
     title,
     home_page_url,
     description,
-    icon,
     items,
 }: Data, opt?: { xsl?: string; }) {
     const declaration = raw('<?xml version="1.0" encoding="UTF-8"?>');
@@ -38,10 +36,6 @@ function Atom({
                 <link rel="alternate" type="text/html" href={home_page_url} />
             </>}
             <subtitle>{description}</subtitle>
-            {icon && <>
-                <icon>{icon}</icon>
-                <logo>{icon}</logo>
-            </>}
             {items.map(({
                 id,
                 title,

@@ -24,7 +24,6 @@ CREATE TABLE IF NOT EXISTS Feed (
     homePage TEXT,
     url TEXT NOT NULL UNIQUE CHECK(length(url) > 0),
     description TEXT,
-    icon TEXT,
     authors TEXT,
     createdAt INTEGER NOT NULL DEFAULT(unixepoch('now')),
     updatedAt INTEGER NOT NULL DEFAULT(unixepoch('now')),
@@ -112,7 +111,6 @@ SELECT
     Feed.url,
     Feed.homePage,
     Feed.description,
-    Feed.icon,
     Category.id categoryId,
     Category.name category
 FROM
@@ -144,7 +142,6 @@ SELECT
     Feed.url feedUrl,
     Feed.homePage,
     Feed.description,
-    Feed.icon,
     Category.id categoryId,
     Category.name category
 FROM

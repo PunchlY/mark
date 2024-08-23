@@ -98,9 +98,8 @@ const subscriptionsQuery = db.query<{
     title: string;
     url: string;
     htmlUrl: string;
-    iconUrl: string;
     label: string;
-}, []>('SELECT id, title, url, homePage htmlUrl, icon iconUrl, category label FROM FeedView');
+}, []>('SELECT id, title, url, homePage htmlUrl, category label FROM FeedView');
 reader.get('/subscription/list', async (c) => {
     const subscriptions = subscriptionsQuery.all();
     return c.json({
@@ -109,7 +108,6 @@ reader.get('/subscription/list', async (c) => {
             title,
             url,
             htmlUrl,
-            iconUrl,
             label,
         }) => {
             return {
@@ -122,7 +120,6 @@ reader.get('/subscription/list', async (c) => {
                 }],
                 url,
                 htmlUrl,
-                iconUrl,
             };
         }),
     });

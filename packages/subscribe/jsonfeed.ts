@@ -22,7 +22,6 @@ const feedSchema = z.object({
     title: z.coerce.string().min(1),
     home_page_url: z.coerce.string().url().nullish(),
     description: z.coerce.string().nullish(),
-    icon: z.coerce.string().url().nullish(),
     author: authorSchema.nullish(),
     authors: authorSchema.array().nullish(),
     items: itemSchema.array(),
