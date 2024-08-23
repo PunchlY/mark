@@ -374,11 +374,10 @@ class Subscribe extends Job {
         const {
             url,
             title,
-            summary,
             content_html,
             authors,
         } = await this.rewrite(item);
-        insertItemQuery.get(key, url ?? null, title ?? null, content_html ?? summary ?? null, date_published?.toISOString() ?? null, (authors && JSON.stringify(authors)) ?? null, this.#id!);
+        insertItemQuery.get(key, url ?? null, title ?? null, content_html ?? null, date_published?.toISOString() ?? null, (authors && JSON.stringify(authors)) ?? null, this.#id!);
         console.log('[insert]', `feedId=${this.#id}`, `itemUrl=${JSON.stringify(url)}`);
     }
     async test(rewrite?: boolean) {

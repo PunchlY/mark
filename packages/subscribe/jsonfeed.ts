@@ -17,12 +17,12 @@ const itemSchema = z.object({
     author: authorSchema.nullish(),
     authors: authorSchema.array().nullish(),
 }).transform(({ id, title, url, content_html, summary, date_published, author, authors }) => {
+    content_html ??= summary;
     return {
-        id: id ?? url ?? MD5.hash(serialize([title, url, content_html, summary, date_published]), 'hex'),
+        id: id ?? url ?? MD5.hash(serialize([title, url, content_html, date_published]), 'hex'),
         title,
         url,
         content_html,
-        summary,
         date_published,
         authors: authors || (author && [author]),
     };
