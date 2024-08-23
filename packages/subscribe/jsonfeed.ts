@@ -1,27 +1,37 @@
-import { z } from 'zod';
+import { MD5 } from 'bun';
+import { serialize } from 'bun:jsc';
 import { XML } from './xml';
+import { z } from 'zod';
 
 const authorSchema = z.object({
     name: z.coerce.string(),
 });
 
 const itemSchema = z.object({
-    id: z.coerce.string().min(1),
-    url: z.coerce.string().url().nullish(),
-    title: z.coerce.string().nullish(),
-    summary: z.coerce.string().nullish(),
-    content_html: z.coerce.string().nullish(),
+    id: z.string().min(1).or(z.number().transform(String)).nullish(),
+    url: z.string().url().nullish(),
+    title: z.string().nullish(),
+    summary: z.string().nullish(),
+    content_html: z.string().nullish(),
     date_published: z.coerce.date().nullish(),
     author: authorSchema.nullish(),
     authors: authorSchema.array().nullish(),
-}).transform(({ author, authors, ...data }) => {
-    return { ...data, authors: authors || (author && [author]) };
+}).transform(({ id, title, url, content_html, summary, date_published, author, authors }) => {
+    return {
+        id: id ?? url ?? MD5.hash(serialize([title, url, content_html, summary, date_published]), 'hex'),
+        title,
+        url,
+        content_html,
+        summary,
+        date_published,
+        authors: authors || (author && [author]),
+    };
 });
 
 const feedSchema = z.object({
-    title: z.coerce.string().min(1),
-    home_page_url: z.coerce.string().url().nullish(),
-    description: z.coerce.string().nullish(),
+    title: z.string().min(1),
+    home_page_url: z.string().url().nullish(),
+    description: z.string().nullish(),
     author: authorSchema.nullish(),
     authors: authorSchema.array().nullish(),
     items: itemSchema.array(),
