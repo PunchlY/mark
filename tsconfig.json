@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "experimentalDecorators": true,
+    "strict": true,
+    "jsx": "react",
+    "jsxFactory": "createElement",
+    "jsxFragmentFactory": "Fragment",
+    "paths": {
+      "package.json": [
+        "./package.json"
+      ],
+      "@rgrove/parse-xml": [
+        "./node_modules/@rgrove/parse-xml/src/index.ts"
+      ]
+    }
+  }
+}

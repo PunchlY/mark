@@ -1,0 +1,15 @@
+# deps
+node_modules/
+
+subscribe/*
+
+dev.db*
+
+dist/*
+
+.env
+.env.development
+
+sqlite.db*
+
+test.ts

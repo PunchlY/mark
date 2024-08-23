@@ -1,0 +1,8 @@
+{
+  "name": "subscribe",
+  "type": "module",
+  "main": "index.ts",
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}

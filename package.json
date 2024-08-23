@@ -1,0 +1,21 @@
+{
+  "type": "module",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "clear && bun run --hot src/cli.ts",
+    "start": "clear && NODE_ENV=production bun run src/cli.ts"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "dependencies": {
+    "@hono/zod-validator": "^0.2.2",
+    "@rgrove/parse-xml": "^4.1.0",
+    "croner": "^8.1.1",
+    "hono": "^4.4.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}
