@@ -11,20 +11,19 @@ const itemSchema = z.object({
     id: z.string().min(1).or(z.number().transform(String)).nullish(),
     url: z.string().url().nullish(),
     title: z.string().nullish(),
-    summary: z.string().nullish(),
     content_html: z.string().nullish(),
-    date_published: z.coerce.date().nullish(),
+    date_published: z.coerce.date().nullish() as unknown as z.ZodOptional<z.ZodNullable<z.ZodEffects<z.ZodNumber, Date, string | number | Date>>>,
     author: authorSchema.nullish(),
     authors: authorSchema.array().nullish(),
-}).transform(({ id, title, url, content_html, summary, date_published, author, authors }) => {
-    content_html ??= summary;
+}).transform(({ id, title, url, content_html, date_published, author, authors }) => {
+    authors ||= (author && [author]);
     return {
-        id: id ?? url ?? MD5.hash(serialize([title, url, content_html, date_published]), 'hex'),
+        id: id ?? url ?? MD5.hash(serialize([title ?? undefined, url ?? undefined, content_html ?? undefined, date_published?.toISOString()]), 'hex'),
         title,
         url,
         content_html,
         date_published,
-        authors: authors || (author && [author]),
+        authors,
     };
 });
 
@@ -39,34 +38,36 @@ const feedSchema = z.object({
     return { ...data, authors: authors || (author && [author]) };
 });
 
-async function JSONFeed(res?: Response | string | Record<string, any>, base?: string): Promise<JSONFeed> {
-    if (res instanceof Response) {
-        base = res.url;
-        if (res.status !== 200)
-            throw new Error(`${res.url} ${res.status}`);
-        const type = res.headers.get('Content-Type');
-        if (type?.startsWith('application/feed+json') || type?.startsWith('application/json'))
-            res = await res.json() as any;
-        else
-            res = await res.text();
+async function JSONFeed(data?: JSONFeed.$Input, base?: string): Promise<JSONFeed> {
+    if (data instanceof Request)
+        data = await fetch(data);
+    if (data instanceof Response) {
+        base = data.url || base;
+        if (data.status !== 200)
+            throw new Error(`${data.url} ${data.status}`);
+        // const type = data.headers.get('Content-Type');
+        // if (type?.startsWith('application/feed+json') || type?.startsWith('application/json'))
+        //     data = await data.json() as any;
+        // else
+        //     data = await data.text();
+        data = await data.text();
+        if (!data.startsWith('<'))
+            try { data = JSON.stringify(data); } catch { }
     }
-    if (typeof res === 'string')
-        res = XML(res.trimStart(), base);
-    return feedSchema.parse(res);
+    if (typeof data === 'string')
+        data = XML(data.trimStart(), base);
+    return feedSchema.parse(data);
 }
-
 interface JSONFeed extends z.infer<typeof feedSchema> { }
 namespace JSONFeed {
-    export interface $Input extends z.input<typeof feedSchema> { }
+    export type $Input = Request | Response | string | z.input<typeof feedSchema>;
 
-    export interface Author extends z.infer<typeof authorSchema> { }
-    export namespace Author {
-        export interface $Input extends z.input<typeof authorSchema> { }
+    export function Item(item: z.input<typeof itemSchema>): Item {
+        return itemSchema.parse(item);
     }
-
     export interface Item extends z.infer<typeof itemSchema> { }
     export namespace Item {
-        export interface $Input extends z.input<typeof itemSchema> { }
+        export type $Input = z.input<typeof itemSchema>;
     }
 }
 

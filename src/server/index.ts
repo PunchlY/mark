@@ -5,7 +5,7 @@ import { showRoutes } from 'hono/dev';
 import feedbinApp from './feedbin';
 import greaderApp from './greader';
 import { Atom } from 'lib/view';
-import { subscribe } from 'subscribe';
+import { Feed } from 'subscribe';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 
@@ -30,10 +30,9 @@ app.get('/test', basicAuth({
     },
 }), zValidator('query', z.object({
     url: z.string().url(),
-    rewrite: z.enum(['true', 'false']).transform((s) => s === 'true').optional(),
 })), async (c) => {
-    const { url, rewrite } = c.req.valid('query');
-    const feed = await subscribe.test(url, rewrite);
+    const { url } = c.req.valid('query');
+    const feed = await Feed.test(url);
     return c.html(Atom(feed), 200, { 'Content-Type': 'text/xml; charset=UTF-8' });
 });
 

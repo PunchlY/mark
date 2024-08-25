@@ -21,30 +21,30 @@ app.get('/authentication.json', async (c) => {
     return c.text('OK', 200);
 });
 
-const subscriptionsQuery = db.query<{
+const subscriptionsStmt = db.query<{
     id: number;
     feed_id: number;
     feed_url: string;
     site_url: string;
 }, []>('SELECT id, id feed_id, title, url feed_url, homePage site_url FROM FeedView');
 app.get('/subscriptions.json', async (c) => {
-    const feeds = subscriptionsQuery.all();
+    const feeds = subscriptionsStmt.all();
     return c.json(feeds);
 });
 
-const taggingsQuery = db.query<{
+const taggingsStmt = db.query<{
     id: number;
     feed_id: number;
     name: string;
 }, []>('SELECT categoryId id, id feed_id, category name FROM FeedView');
 app.get('/taggings.json', async (c) => {
-    const taggings = taggingsQuery.all();
+    const taggings = taggingsStmt.all();
     return c.json(taggings);
 });
 
-const unreadEntriesQuery = db.query<{ id: number; }, []>('SELECT id FROM ItemView WHERE read=0');
+const unreadEntriesStmt = db.query<{ id: number; }, []>('SELECT id FROM ItemView WHERE read=0');
 app.get('/unread_entries.json', async (c) => {
-    const entries = unreadEntriesQuery.all();
+    const entries = unreadEntriesStmt.all();
     return c.json(entries.map(({ id }) => id));
 }).post(zValidator('json', z.object({
     unread_entries: z.coerce.number().int().positive().array(),
@@ -60,9 +60,9 @@ app.get('/unread_entries.json', async (c) => {
     return c.json(entries.map(({ id }) => id));
 });
 
-const starredEntriesQuery = db.query<{ id: number; }, []>('SELECT id FROM ItemView WHERE star=1');
+const starredEntriesStmt = db.query<{ id: number; }, []>('SELECT id FROM ItemView WHERE star=1');
 app.get('/starred_entries.json', async (c) => {
-    const entries = starredEntriesQuery.all();
+    const entries = starredEntriesStmt.all();
     return c.json(entries.map(({ id }) => id));
 }).post(zValidator('json', z.object({
     starred_entries: z.coerce.number().int().positive().array(),
@@ -78,7 +78,7 @@ app.get('/starred_entries.json', async (c) => {
     return c.json(entries.map(({ id }) => id));
 });
 
-const entriesQuery = db.query<unknown, [{
+const entriesStmt = db.query<unknown, [{
     read: boolean | null;
     star: boolean | null;
     limit: number;
@@ -144,7 +144,7 @@ app.get('/entries.json', zValidator('query', z.object({
         offset: (page - 1) * per_page,
     };
 })), async (c) => {
-    const entries = entriesQuery.all(c.req.valid('query'));
+    const entries = entriesStmt.all(c.req.valid('query'));
     return c.json(entries);
 });
 

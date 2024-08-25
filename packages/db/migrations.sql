@@ -79,24 +79,6 @@ CREATE TABLE IF NOT EXISTS Subscribe (
     FOREIGN KEY (id) REFERENCES Feed(id) ON UPDATE cascade ON DELETE restrict
 );
 
-CREATE TABLE IF NOT EXISTS CleanedItem (
-    id INTEGER PRIMARY KEY NOT NULL,
-    key TEXT NOT NULL CHECK(length(key) > 0),
-    feedId INTEGER NOT NULL,
-    UNIQUE(key, feedId),
-    FOREIGN KEY (feedId) REFERENCES Feed(id) ON UPDATE cascade ON DELETE restrict
-);
-
-CREATE TRIGGER IF NOT EXISTS ItemDelete
-AFTER
-    DELETE ON Item BEGIN
-INSERT INTO
-    CleanedItem (key, feedId)
-VALUES
-    (OLD.key, OLD.feedId);
-
-END;
-
 CREATE VIEW IF NOT EXISTS CategoryView AS
 SELECT
     Category.id,

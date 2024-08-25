@@ -76,9 +76,9 @@ reader.get('/token', async (c) => {
     return c.text(c.var.token);
 });
 
-const tagsQuery = db.query<{ label: string; }, []>('SELECT name label FROM CategoryView');
+const tagsStmt = db.query<{ label: string; }, []>('SELECT name label FROM CategoryView');
 reader.get('/tag/list', async (c) => {
-    const tags = tagsQuery.all();
+    const tags = tagsStmt.all();
     return c.json({
         tags: [
             { id: 'user/-/state/com.google/starred' },
@@ -93,7 +93,7 @@ reader.get('/tag/list', async (c) => {
     });
 });
 
-const subscriptionsQuery = db.query<{
+const subscriptionsStmt = db.query<{
     id: number;
     title: string;
     url: string;
@@ -101,7 +101,7 @@ const subscriptionsQuery = db.query<{
     label: string;
 }, []>('SELECT id, title, url, homePage htmlUrl, category label FROM FeedView');
 reader.get('/subscription/list', async (c) => {
-    const subscriptions = subscriptionsQuery.all();
+    const subscriptions = subscriptionsStmt.all();
     return c.json({
         subscriptions: subscriptions.map(({
             id,
@@ -246,13 +246,13 @@ const streamSuery = (secret: string) => {
     return db.query<any, z.infer<typeof streamSchema>>(`SELECT ${secret} FROM ItemView WHERE ifnull(read=$read,1) AND ifnull(star=$star,1) AND ifnull(category=$category,1) AND ifnull(feedId=$feedId,1) AND ifnull(publishedAt<=$nt,1) AND ifnull(publishedAt>=$ot,1) AND ifnull(iif($r,id>=$c,id<=$c),1) ORDER BY iif($r,id,null) ASC, iif($r,null,id) DESC LIMIT $n+1`);
 };
 
-const contentsQuery = streamSuery('id, url, title, authors, contentHtml, publishedAt, createdAt, read, star, feedId, feedTitle, homePage, category').as(Item);
+const contentsStmt = streamSuery('id, url, title, authors, contentHtml, publishedAt, createdAt, read, star, feedId, feedTitle, homePage, category').as(Item);
 
-const idsQuery = streamSuery('id');
+const idsStmt = streamSuery('id');
 
 reader.get('/stream/items/ids', zValidator('query', streamSchema), async (c) => {
     const param = c.req.valid('query'), { n } = param;
-    const itemRefs = idsQuery.all(param);
+    const itemRefs = idsStmt.all(param);
     const data: {
         itemRefs: { id: string; }[];
         continuation?: string;
@@ -270,7 +270,7 @@ reader.get('/stream/items/ids', zValidator('query', streamSchema), async (c) => 
 
 reader.get('/stream/contents', zValidator('query', streamSchema), async (c) => {
     const param = c.req.valid('query'), { n } = param;
-    const items = contentsQuery.all(param);
+    const items = contentsStmt.all(param);
     return c.json({
         id: 'user/-/state/com.google/reading-list',
         updated: new Date().getTime() / 1000 | 0,

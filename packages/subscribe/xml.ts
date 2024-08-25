@@ -4,7 +4,7 @@ import { GetElements, GetText } from 'lib/xml';
 
 function ATOM(node: XmlElement, base?: string) {
     const feed: {
-        title?: string;
+        title: string;
         authors?: { name: string; }[];
         home_page_url?: string;
         description?: string;
@@ -17,7 +17,7 @@ function ATOM(node: XmlElement, base?: string) {
             date_published?: Date;
             authors?: { name: string; }[];
         }[];
-    } = { items: [] };
+    } = { title: '', items: [] };
     for (const element of GetElements(node)) {
         switch (element.name) {
             case 'title':
@@ -84,7 +84,7 @@ function ATOM(node: XmlElement, base?: string) {
 
 function RSS2(node: XmlElement, base?: string) {
     const feed: {
-        title?: string;
+        title: string;
         home_page_url?: string;
         description?: string;
         items: {
@@ -96,7 +96,7 @@ function RSS2(node: XmlElement, base?: string) {
             date_published?: Date;
             author?: { name: string; };
         }[];
-    } = { items: [] };
+    } = { title: '', items: [] };
     feed.items = [];
     for (const element of GetElements(node)) {
         switch (element.name) {
