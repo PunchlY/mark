@@ -9,8 +9,8 @@ const db: Database = process.env.NODE_ENV === 'production' ?
 process.once('exit', () => db.close());
 
 db.fileControl(constants.SQLITE_FCNTL_PERSIST_WAL, 0);
-db.run('PRAGMA journal_mode = WAL;');
-db.run('PRAGMA foreign_keys = ON;');
+db.run('PRAGMA JOURNAL_MODE = WAL;');
+db.run('PRAGMA FOREIGN_KEYS = ON;');
 
 db.run(migrations);
 

@@ -20,4 +20,4 @@ for (const message of logs)
 if (!success)
     process.exit(1);
 
-await $`bun build ./dist/cli.js --compile --outfile ./dist/cli --minify`;
+// await $`bun build ./dist/cli.js --compile --outfile ./dist/cli --minify`;

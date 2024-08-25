@@ -1,7 +1,7 @@
 import { escapeHTML } from 'bun';
-import { CDATA } from './cdata';
-import { Fragment, createElement } from 'hono/jsx';
 import { html, raw } from 'hono/html';
+import { Fragment, createElement } from 'hono/jsx';
+import { CDATA } from './cdata';
 
 type Data = {
     title: string;

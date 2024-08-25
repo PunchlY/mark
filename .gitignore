@@ -1,15 +1,14 @@
 # deps
 node_modules/
 
-subscribe/*
+/dist/
+/data/
+/subscribe/
 
 dev.db*
-
-dist/*
+sqlite.db*
 
 .env
 .env.development
 
-sqlite.db*
-
-test.ts
+/test.ts

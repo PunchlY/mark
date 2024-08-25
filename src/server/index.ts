@@ -1,13 +1,9 @@
 import { Hono } from 'hono';
-import { basicAuth } from 'hono/basic-auth';
-import { logger } from 'hono/logger';
-import { showRoutes } from 'hono/dev';
+// import { logger } from 'hono/logger';
+// import { showRoutes } from 'hono/dev';
 import feedbinApp from './feedbin';
 import greaderApp from './greader';
-import { Atom } from 'lib/view';
-import { Feed } from 'subscribe';
-import { zValidator } from '@hono/zod-validator';
-import { z } from 'zod';
+import apiApp from './api';
 
 const app = new Hono<{
     Bindings: {
@@ -16,27 +12,22 @@ const app = new Hono<{
     };
 }>({ strict: false });
 
-if (process.env.NODE_ENV !== 'production')
-    app.use(logger());
+// if (process.env.NODE_ENV !== 'production')
+//     app.use(logger());
+
+// app.onError(function ServerErrorHandler(err, c) {
+//     logger.error('url=%j status=%d err=%j', c.req.url, c.res.status, err.message);
+//     return c.res;
+// });
 
 app.get('/', (c) => c.text('hello.'));
 
 app.route('/feedbin', feedbinApp);
 app.route('/greader', greaderApp);
 
-app.get('/test', basicAuth({
-    verifyUser(username, password, c) {
-        return username === c.env.EMAIL && password === c.env.PASSWORD;
-    },
-}), zValidator('query', z.object({
-    url: z.string().url(),
-})), async (c) => {
-    const { url } = c.req.valid('query');
-    const feed = await Feed.test(url);
-    return c.html(Atom(feed), 200, { 'Content-Type': 'text/xml; charset=UTF-8' });
-});
+app.route('/api', apiApp);
 
-if (process.env.NODE_ENV !== 'production')
-    showRoutes(app);
+// if (process.env.NODE_ENV !== 'production')
+//     showRoutes(app);
 
 export default app;

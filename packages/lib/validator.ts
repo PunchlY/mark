@@ -1,4 +1,5 @@
 import type { MiddlewareHandler, Env, Input, HonoRequest } from 'hono';
+import { HTTPException } from 'hono/http-exception';
 import type { z, ZodSchema } from 'zod';
 
 function BodyValidator<T extends ZodSchema, E extends Env, P extends string, I extends Input = {
@@ -6,7 +7,14 @@ function BodyValidator<T extends ZodSchema, E extends Env, P extends string, I e
     out: { form: z.output<T>; };
 },>(schema: T, opt?: Parameters<HonoRequest['parseBody']>[0]): MiddlewareHandler<E, P, I> {
     return async function (c, next) {
-        const body = await c.req.parseBody(opt);
+        let body;
+        try {
+            body = await c.req.parseBody(opt);
+        } catch (e) {
+            throw new HTTPException(400, {
+                message: `Malformed Body request. ${e instanceof Error ? e.message : e}`,
+            });
+        }
         const result = await schema.safeParseAsync(body);
         if (!result.success)
             return c.json(result, 400);
@@ -15,18 +23,4 @@ function BodyValidator<T extends ZodSchema, E extends Env, P extends string, I e
     };
 }
 
-function JSONValidator<T extends ZodSchema, E extends Env, P extends string, I extends Input = {
-    in: { json?: z.input<T>; };
-    out: { json: z.output<T>; };
-},>(schema: T): MiddlewareHandler<E, P, I> {
-    return async function (c, next) {
-        const json = await c.req.json();
-        const result = await schema.safeParseAsync(json);
-        if (!result.success)
-            return c.json(result, 400);
-        c.req.addValidatedData('json', result.data);
-        await next();
-    };
-}
-
-export { BodyValidator, JSONValidator };
+export { BodyValidator };

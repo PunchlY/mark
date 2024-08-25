@@ -1,5 +1,5 @@
 
-const listCache = new Map<Function, Map<any, any>>;
+/* @__PURE__ */ const listCache = new Map<Function, Map<any, any>>;
 
 function CacheList<T extends new (key: any) => any>(constructor: T): Map<T, InstanceType<T>> {
     let list = listCache.get(constructor);

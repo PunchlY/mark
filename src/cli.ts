@@ -44,7 +44,9 @@ if (values.version) {
 if (values.memory)
     Bun.env.DATABASE = ':memory:';
 
-const { Entry } = await import('subscribe');
-await Entry(positionals);
+if (positionals.length) {
+    const { Entry } = await import('subscribe/job');
+    await Entry(positionals);
+}
 
 await import('./server/startup');

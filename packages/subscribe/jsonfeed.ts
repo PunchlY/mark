@@ -52,7 +52,7 @@ async function JSONFeed(data?: JSONFeed.$Input, base?: string): Promise<JSONFeed
         //     data = await data.text();
         data = await data.text();
         if (!data.startsWith('<'))
-            try { data = JSON.stringify(data); } catch { }
+            try { data = JSON.parse(data); } catch { }
     }
     if (typeof data === 'string')
         data = XML(data.trimStart(), base);

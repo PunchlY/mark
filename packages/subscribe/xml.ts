@@ -12,7 +12,6 @@ function ATOM(node: XmlElement, base?: string) {
             id?: string;
             url?: string;
             title?: string;
-            summary?: string;
             content_html?: string;
             date_published?: Date;
             authors?: { name: string; }[];
@@ -52,7 +51,7 @@ function ATOM(node: XmlElement, base?: string) {
                             item.title = GetText(itemElement);
                             break;
                         case 'summary':
-                            item.summary = GetText(itemElement);
+                            item.content_html ||= GetText(itemElement);
                             break;
                         case 'content':
                             item.content_html = GetText(itemElement);
@@ -91,7 +90,6 @@ function RSS2(node: XmlElement, base?: string) {
             id?: string;
             url?: string;
             title?: string;
-            summary?: string;
             content_html?: string;
             date_published?: Date;
             author?: { name: string; };
@@ -121,7 +119,7 @@ function RSS2(node: XmlElement, base?: string) {
                             item.title = GetText(itemElement);
                             break;
                         case 'description':
-                            item.summary = GetText(itemElement);
+                            item.content_html ||= GetText(itemElement);
                             break;
                         case 'content:encoded':
                             item.content_html = GetText(itemElement);

@@ -1,6 +1,6 @@
 {
   "type": "module",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "scripts": {
     "dev": "clear && bun run --hot src/cli.ts",
     "start": "clear && NODE_ENV=production bun run src/cli.ts"
