@@ -1,7 +1,7 @@
 import { plugin } from 'bun';
 import { resolve } from 'path';
 import Cron from 'croner';
-import { Instance } from 'lib/cache';
+import { GetCacheList, Instance } from 'lib/cache';
 import { Feed, Subscribe } from './subscribe';
 import db from 'db';
 import JSONFeed from './jsonfeed';
@@ -169,6 +169,8 @@ async function Entry(files: string[]) {
         }
         new SubscribeJob(opt);
     }
+    for (const [, cron] of GetCacheList(SubscribeCron))
+        cron.resume();
 }
 
 export { Entry };
