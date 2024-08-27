@@ -6,8 +6,6 @@ const db: Database = process.env.NODE_ENV === 'production' ?
     // @ts-ignore
     globalThis['$sqlite'] ??= new Database(`${__dirname}/dev.db`, { strict: true });
 
-process.once('exit', () => db.close());
-
 db.fileControl(constants.SQLITE_FCNTL_PERSIST_WAL, 0);
 db.run('PRAGMA JOURNAL_MODE = WAL;');
 db.run('PRAGMA FOREIGN_KEYS = ON;');

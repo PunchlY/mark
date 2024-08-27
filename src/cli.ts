@@ -1,8 +1,7 @@
+import { Entry } from 'subscribe/job';
 
-if (process.argv.length) {
-    const { Entry } = await import('subscribe/job');
-    await Entry(process.argv);
-}
+if (process.argv.length > 2)
+    await Entry(process.argv.slice(2));
 
 await import('./server/startup');
 
