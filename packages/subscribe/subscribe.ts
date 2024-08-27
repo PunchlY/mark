@@ -1,5 +1,9 @@
-import { GetCache, GetCacheList } from 'lib/cache';
+import { z } from 'zod';
+import { GetCache, GetCacheList, Instance } from 'lib/cache';
 import JSONFeed from './jsonfeed';
+
+const nameSchema = z.string().min(1);
+const urlSchema = z.string().url();
 
 namespace Job {
     export interface Fetcher<T> {
@@ -79,7 +83,7 @@ class Category extends Job { }
 class Feed extends Job {
     static async test(url: string) {
         const feed = GetCache(this, url) ?? new this(url);
-        return await feed.test();
+        return await new Subscribe(feed.#data).test();
     }
     static *[Symbol.iterator]() {
         for (const [, subscribe] of GetCacheList(Feed))
@@ -118,16 +122,13 @@ class Feed extends Job {
     }
     #category = 'Uncategorized';
     category(name: string) {
+        name = nameSchema.parse(name);
         this.#category = name;
         return this;
     }
     #unsubscribe = false;
     unsubscribe() {
         this.#unsubscribe = true;
-    }
-
-    async test() {
-        return await new Subscribe(this.#data).test();
     }
 }
 namespace Feed {
@@ -193,5 +194,18 @@ namespace Factory {
     export const rewriter: <T>(rewrite: Job.Rewriter<T>) => typeof rewrite = Factory;
 }
 
+function category(name?: string) {
+    if (arguments.length === 0)
+        name = '';
+    else
+        name = nameSchema.parse(name);
+    return Instance(Category, name);
+}
+
+function subscribe(url: string) {
+    url = urlSchema.parse(url);
+    return Instance(Feed, url);
+}
+
 export type { Job };
-export { Feed, Category, Subscribe, Factory };
+export { Feed, Category, Subscribe, Factory, category, subscribe };
