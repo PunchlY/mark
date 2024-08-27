@@ -81,8 +81,13 @@ abstract class Job {
 class Category extends Job { }
 
 class Feed extends Job {
-    static async test(url: string) {
-        const feed = GetCache(this, url) ?? new this(url);
+    static async test(url: string, category?: string) {
+        let feed = GetCache(this, url);
+        if (!feed) {
+            feed = new this(url);
+            if (category)
+                feed.category(category);
+        }
         return await new Subscribe(feed.#data).test();
     }
     static *[Symbol.iterator]() {
