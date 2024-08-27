@@ -25,9 +25,7 @@ namespace Job {
 }
 abstract class Job {
     static defaultFetcher = [(ctx: { url: URL; }) => fetch(ctx.url)] as [(ctx: { url: URL; }) => Promise<Response>];
-    static getData(job?: Job) {
-        if (!job)
-            return;
+    static getData(job: Job) {
         return {
             key: job.#key,
             fetcher: job.#fetcher,
@@ -82,37 +80,29 @@ class Category extends Job { }
 
 class Feed extends Job {
     static async test(url: string, category?: string) {
-        let feed = GetCache(this, url);
-        if (!feed) {
-            feed = new this(url);
-            if (category)
-                feed.category(category);
-        }
-        return await new Subscribe(feed.#data).test();
+        const feed = GetCache(this, url) ?? new this(url);
+        return await new Subscribe(feed.#data(category)).test();
     }
     static *[Symbol.iterator]() {
         for (const [, subscribe] of GetCacheList(Feed))
-            yield subscribe.#data;
+            yield subscribe.#data();
     }
-    get #data() {
+    #data(categoryName?: string) {
         const feed = Job.getData(this)!;
         const fetcher = [...feed.fetcher], rewriter = [...feed.rewriter];
         let { refresher, cleaner, unreadCleaner } = feed;
-        if (!this.#unsubscribe) {
-            const category = Job.getData(GetCache(Category, this.#category));
-            const global = Job.getData(GetCache(Category, ''));
-            if (category) {
-                fetcher.push(...category.fetcher);
-                rewriter.push(...category.rewriter);
+        if (!this.#unsubscribe || categoryName)
+            for (const category of [
+                GetCache(Category, categoryName ? nameSchema.parse(categoryName) : this.#category),
+                GetCache(Category, ''),
+            ]) if (category) {
+                const data = Job.getData(category);
+                fetcher.push(...data.fetcher);
+                rewriter.push(...data.rewriter);
+                refresher ??= data.refresher;
+                cleaner ??= data.cleaner;
+                unreadCleaner ??= data.unreadCleaner;
             }
-            if (global) {
-                fetcher.push(...global.fetcher);
-                rewriter.push(...global.rewriter);
-            }
-            refresher ??= category?.refresher ?? global?.refresher;
-            cleaner ??= category?.cleaner ?? global?.cleaner;
-            unreadCleaner ??= category?.unreadCleaner ?? global?.unreadCleaner;
-        }
         fetcher.push(Job.defaultFetcher);
         return {
             fetcher,

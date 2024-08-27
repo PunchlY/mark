@@ -18,9 +18,10 @@ const app = new Hono<{
 
 app.get('/test', zValidator('query', z.object({
     url: z.string().url(),
+    category: z.string().optional(),
 })), async (c) => {
-    const { url } = c.req.valid('query');
-    const feed = await Feed.test(url);
+    const { url, category } = c.req.valid('query');
+    const feed = await Feed.test(url, category);
     return c.html(Atom(feed), 200, { 'Content-Type': 'text/xml; charset=UTF-8' });
 });
 
