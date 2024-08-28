@@ -111,11 +111,12 @@ class SubscribeJob extends Subscribe {
     }
     minPublishedAt?: number;
     findAndUpdateItem(key: string, date_published?: Date | null) {
+        if (date_published && this.minPublishedAt !== undefined && date_published.getTime() / 1000 <= this.minPublishedAt)
+            return true;
         const item = findItemStmt.get(key, this.id);
         if (!item)
             return false;
-        if (date_published && this.minPublishedAt !== undefined && date_published.getTime() / 1000 >= this.minPublishedAt)
-            updateItemStmt.run(item.id);
+        updateItemStmt.run(item.id);
         return true;
     }
     @SubscribeJob.catch
