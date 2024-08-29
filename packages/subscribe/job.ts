@@ -60,8 +60,9 @@ const updateFeedStmt = db.query<null, [title: string, home_page_url: string | nu
 const insertItemStmt = db.query<null, [key: string, url: string | null, title: string | null, contentHtml: string | null, datePublished: string | null, authors: string | null, feedId: number]>(`INSERT INTO Item (key,url,title,contentHtml,datePublished,authors,feedId) VALUES (?,?,?,?,unixepoch(?),?,?)`);
 // const findItemStmt = db.query<{ id: number; }, [key: string, feedId: number]>('SELECT id FROM Item WHERE key=? AND feedId=?');
 const updateItemStmt = db.query<{ id: number; }, [key: string, feedId: number]>(`UPDATE Item SET id=id WHERE key=? AND feedId=? RETURNING id`);
-const selectMinUnReadItemPublishedStmt = db.query<{ date: number; }, [feedId: number]>('SELECT MIN(datePublished) date FROM Item WHERE feedId=? AND read=0');
 const updateItemByUpdatedAtStmt = db.query<null, [feedId: number]>(`UPDATE Item SET updatedAt=0 WHERE feedId=?1 AND updatedAt>=(SELECT updatedAt FROM Feed WHERE id=?1)`);
+
+const selectMinUnReadItemPublishedStmt = db.query<{ date: number; }, [feedId: number]>('SELECT ifnull(MIN(datePublished),(SELECT updatedAt FROM Feed WHERE id=?1)) date FROM Item WHERE feedId=?1 AND read=0');
 
 const cleanStmt = db.query<null, [feedId: number]>(`DELETE FROM Item WHERE feedId=?1 AND star=0 AND read=1 AND updatedAt<(SELECT updatedAt FROM Feed WHERE id=?1)`);
 const unreadCleanStmt = db.query<null, [feedId: number]>(`DELETE FROM Item WHERE feedId=?1 AND star=0 AND updatedAt<(SELECT updatedAt FROM Feed WHERE id=?1)`);
@@ -89,7 +90,7 @@ class SubscribeJob extends Subscribe {
         if (find) {
             this.id = find.id;
             if (find.category !== category.name) {
-                updateFeedCategoryStmt.get(category.id, this.id);
+                updateFeedCategoryStmt.run(category.id, this.id);
                 updateItemByUpdatedAtStmt.run(this.id);
             }
         } else {
@@ -106,7 +107,6 @@ class SubscribeJob extends Subscribe {
         if (this.unreadCleaner)
             Instance(SubscribeCron, this.unreadCleaner).unreadClean.add(this);
     }
-    minPublishedAt?: number;
     @SubscribeJob.catch
     async refresh() {
         const {
@@ -115,17 +115,15 @@ class SubscribeJob extends Subscribe {
             authors,
             items,
         } = await super.fetch();
+        const minPublishedAt = selectMinUnReadItemPublishedStmt.get(this.id)?.date!;
         updateFeedStmt.run(title, home_page_url ?? null, (authors && JSON.stringify(authors)) ?? null, this.id);
-        this.minPublishedAt = selectMinUnReadItemPublishedStmt.get(this.id)?.date;
-        for (const item of items)
+        for (const item of items.filter(({ date_published }) => !date_published || date_published.getTime() / 1000 >= minPublishedAt))
             await this.insert(item);
         console.debug('[refresh] feedId=%d', this.id);
     }
     @SubscribeJob.catch
     async insert(item: JSONFeed.Item) {
-        const { id: key, date_published } = item!;
-        if (date_published && this.minPublishedAt !== undefined && date_published.getTime() / 1000 < this.minPublishedAt)
-            return;
+        const key = item.id, date_published = item.date_published?.toISOString() ?? null;
         if (updateItemStmt.get(key, this.id))
             return;
         const {
@@ -134,8 +132,8 @@ class SubscribeJob extends Subscribe {
             content_html,
             authors,
         } = await this.rewrite(item);
-        insertItemStmt.get(key, url ?? null, title ?? null, content_html ?? null, date_published?.toISOString() ?? null, (authors && JSON.stringify(authors)) ?? null, this.id);
-        console.debug('[insert] feedId=%d url=%s', this.id, url);
+        insertItemStmt.get(key, url ?? null, title ?? null, content_html ?? null, date_published, (authors && JSON.stringify(authors)) ?? null, this.id);
+        console.debug('[insert] feedId=%d url=%s', this.id, key);
     }
     @SubscribeJob.catch
     async clean() {
