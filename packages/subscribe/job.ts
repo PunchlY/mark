@@ -61,7 +61,7 @@ const insertItemStmt = db.query<null, [key: string, url: string | null, title: s
 // const findItemStmt = db.query<{ id: number; }, [key: string, feedId: number]>('SELECT id FROM Item WHERE key=? AND feedId=?');
 const updateItemStmt = db.query<{ id: number; }, [key: string, feedId: number]>(`UPDATE Item SET id=id WHERE key=? AND feedId=? RETURNING id`);
 const selectMinUnReadItemPublishedStmt = db.query<{ date: number; }, [feedId: number]>('SELECT MIN(datePublished) date FROM Item WHERE feedId=? AND read=0');
-const updateItemByUpdatedAtStmt = db.query<null, [feedId: number]>(`UPDATE Item SET updatedAt=0 WHERE feedId=?1 updatedAt>=(SELECT updatedAt FROM Feed WHERE id=?1)`);
+const updateItemByUpdatedAtStmt = db.query<null, [feedId: number]>(`UPDATE Item SET updatedAt=0 WHERE feedId=?1 AND updatedAt>=(SELECT updatedAt FROM Feed WHERE id=?1)`);
 
 const cleanStmt = db.query<null, [feedId: number]>(`DELETE FROM Item WHERE feedId=?1 AND star=0 AND read=1 AND updatedAt<(SELECT updatedAt FROM Feed WHERE id=?1)`);
 const unreadCleanStmt = db.query<null, [feedId: number]>(`DELETE FROM Item WHERE feedId=?1 AND star=0 AND updatedAt<(SELECT updatedAt FROM Feed WHERE id=?1)`);
