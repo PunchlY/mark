@@ -8,10 +8,10 @@ const urlSchema = z.string().url();
 namespace Job {
     export interface Fetcher<T> {
         (ctx: {
-            readonly url: URL;
+            req: Request;
             res: JSONFeed;
             readonly finalized: boolean;
-            param: T;
+            readonly param: T;
         }, next: () => Promise<void>): JSONFeed.$Input | void | PromiseLike<JSONFeed.$Input | void>;
     }
     export interface Rewriter<T> {
@@ -19,12 +19,12 @@ namespace Job {
             readonly item: JSONFeed.Item;
             res: JSONFeed.Item;
             readonly finalized: boolean;
-            param: T;
+            readonly param: T;
         }, next: () => Promise<void>): JSONFeed.Item.$Input | void | PromiseLike<JSONFeed.Item.$Input | void>;
     }
 }
 abstract class Job {
-    static defaultFetcher = [(ctx: { url: URL; }) => fetch(ctx.url)] as [(ctx: { url: URL; }) => Promise<Response>];
+    static defaultFetcher = [(ctx: { req: Request; }) => fetch(ctx.req)] as [(ctx: { req: Request; }) => Promise<Response>];
     static getData(job: Job) {
         return {
             key: job.#key,
@@ -42,36 +42,38 @@ abstract class Job {
     #fetcher: [cb: Job.Fetcher<any>, param?: any][] = [];
     fetcher(fetch: Job.Fetcher<undefined>): this;
     fetcher<T>(fetch: Job.Fetcher<T>, param: T): this;
-    fetcher<T>(fetch: Job.Fetcher<T>, param?: T) {
+    fetcher(fetch: Job.Fetcher<any>, param?: any) {
         this.#fetcher.push([fetch, param]);
         return this;
     }
     #rewriter: [cb: Job.Rewriter<any>, param?: any][] = [];
     rewriter(rewrite: Job.Rewriter<undefined>): this;
     rewriter<T>(rewrite: Job.Rewriter<T>, param: T): this;
-    rewriter<T>(rewrite: Job.Rewriter<T>, param?: T) {
+    rewriter(rewrite: Job.Rewriter<any>, param?: any) {
         this.#rewriter.push([rewrite, param]);
         return this;
     }
+    #cron(pattern?: string | Date | boolean) {
+        if (typeof pattern === 'string')
+            return pattern;
+        if (pattern instanceof Date)
+            return pattern;
+        if (!pattern)
+            return false;
+    }
     #refresher?: string | Date | false;
     refresher(cron?: string | Date | boolean) {
-        if (cron === true)
-            cron = undefined;
-        this.#refresher = cron;
+        this.#refresher = this.#cron(cron);
         return this;
     }
     #cleaner?: string | Date | false;
     cleaner(cron?: string | Date | boolean) {
-        if (cron === true)
-            cron = undefined;
-        this.#cleaner = cron;
+        this.#cleaner = this.#cron(cron);
         return this;
     }
     #unreadCleaner?: string | Date | false;
     unreadCleaner(cron?: string | Date | boolean) {
-        if (cron === true)
-            cron = undefined;
-        this.#unreadCleaner = cron;
+        this.#unreadCleaner = this.#cron(cron);
         return this;
     }
 }
@@ -88,7 +90,7 @@ class Feed extends Job {
             yield subscribe.#data();
     }
     #data(categoryName?: string) {
-        const feed = Job.getData(this)!;
+        const feed = Job.getData(this);
         const fetcher = [...feed.fetcher], rewriter = [...feed.rewriter];
         let { refresher, cleaner, unreadCleaner } = feed;
         if (!this.#unsubscribe || categoryName)
@@ -138,8 +140,9 @@ function Once(func: () => Promise<any>, wait?: Promise<any>) {
 async function Compose(this: ArrayLike<[cb: (context: any, next: () => Promise<void>) => any, param?: any]>, index: number, context: { finalized: boolean, res: object; } & Record<any, any>, parse: (value: any) => any): Promise<any> {
     if (this.length === index) return;
     const [cb, param] = this[index];
-    const ctx = Object.create(context);
-    ctx.param = param;
+    const ctx = Object.create(context, {
+        param: { get() { return param; } },
+    });
     const res = await cb(ctx, Once(Compose.bind(this, index + 1, context, parse)));
     if (context.finalized)
         return;
@@ -154,19 +157,20 @@ class Subscribe {
         Object.assign(this, opt);
     }
     async fetch() {
-        const url = new URL(this.url);
+        let req = new Request(this.url);
         let res: JSONFeed = { title: this.url, items: [], authors: null };
         await Compose.call(this.fetcher, 0, {
-            url,
+            get req() { return req; },
+            set req(value) { req = value; },
             get res() { return res; },
             set res(value) { res = value; },
             finalized: false,
         }, JSONFeed);
-        return res || await JSONFeed(await fetch(url));
+        return res;
     }
     async rewrite(item: JSONFeed.Item) {
         await Compose.call(this.rewriter, 0, {
-            item,
+            get item() { return item; },
             get res() { return item; },
             set res(value) { item = value; },
             finalized: false,
@@ -175,10 +179,7 @@ class Subscribe {
     }
     async test() {
         const feed = await this.fetch();
-        const items = [];
-        for (const item of feed.items)
-            items.push(await this.rewrite(item));
-        feed.items = items.filter(Boolean as unknown as (e: any) => e is JSONFeed.Item);
+        feed.items = await Promise.all(feed.items.map((item) => this.rewrite(item)));
         return feed;
     }
 }

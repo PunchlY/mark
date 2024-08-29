@@ -7,7 +7,6 @@ function ATOM(node: XmlElement, base?: string) {
         title: string;
         authors?: { name: string; }[];
         home_page_url?: string;
-        description?: string;
         items: {
             id?: string;
             url?: string;
@@ -35,9 +34,6 @@ function ATOM(node: XmlElement, base?: string) {
                 const { rel, href } = element.attributes;
                 if (rel === undefined || rel === 'alternate')
                     feed.home_page_url = new URL(href, base).href;
-                break;
-            case 'subtitle':
-                feed.description = GetText(element);
                 break;
             case 'entry':
                 const item: typeof feed.items[number] = {};
@@ -85,7 +81,6 @@ function RSS2(node: XmlElement, base?: string) {
     const feed: {
         title: string;
         home_page_url?: string;
-        description?: string;
         items: {
             id?: string;
             url?: string;
@@ -103,9 +98,6 @@ function RSS2(node: XmlElement, base?: string) {
                 break;
             case 'link':
                 feed.home_page_url = new URL(GetText(element), base).href;
-                break;
-            case 'description':
-                feed.description = GetText(element);
                 break;
             case 'item':
                 const item: typeof feed.items[number] = {};

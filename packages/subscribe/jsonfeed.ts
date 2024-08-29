@@ -30,7 +30,6 @@ const itemSchema = z.object({
 const feedSchema = z.object({
     title: z.string().min(1),
     home_page_url: z.string().url().nullish(),
-    description: z.string().nullish(),
     author: authorSchema.nullish(),
     authors: authorSchema.array().nullish(),
     items: itemSchema.array(),
@@ -45,17 +44,15 @@ async function JSONFeed(data?: JSONFeed.$Input, base?: string): Promise<JSONFeed
         base = data.url || base;
         if (data.status !== 200)
             throw new Error(`${data.url} ${data.status}`);
-        // const type = data.headers.get('Content-Type');
-        // if (type?.startsWith('application/feed+json') || type?.startsWith('application/json'))
-        //     data = await data.json() as any;
-        // else
-        //     data = await data.text();
         data = await data.text();
-        if (!data.startsWith('<'))
-            try { data = JSON.parse(data); } catch { }
     }
-    if (typeof data === 'string')
-        data = XML(data.trimStart(), base);
+    if (typeof data === 'string') {
+        data = data.trimStart();
+        if (data.startsWith('<'))
+            data = XML(data.trimStart(), base);
+        else
+            data = JSON.parse(data);
+    }
     return feedSchema.parse(data);
 }
 interface JSONFeed extends z.infer<typeof feedSchema> { }

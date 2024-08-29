@@ -55,15 +55,16 @@ const subscribeStmt = db.query<null, [number]>(`INSERT OR IGNORE INTO Subscribe 
 const findFeedStmt = db.query<{ id: number; title: string | null, category: string; }, [url: string]>(`SELECT Feed.id, Feed.title, Category.name category FROM Feed LEFT JOIN Category ON Feed.categoryId=Category.id WHERE url=?`);
 const insertFeedStmt = db.query<{ id: number; }, [url: string, category: number]>(`INSERT INTO Feed (url,categoryId) VALUES (?,?) RETURNING id`);
 const updateFeedCategoryStmt = db.query<null, [categoryId: number, id: number]>(`UPDATE Feed SET categoryId=? WHERE id=?`);
-const updateFeedStmt = db.query<null, [title: string, home_page_url: string | null, description: string | null, authors: string | null, id: number]>(`UPDATE Feed SET title=?,homePage=?,description=?,authors=? WHERE id=?`);
+const updateFeedStmt = db.query<null, [title: string, home_page_url: string | null, authors: string | null, id: number]>(`UPDATE Feed SET title=?,homePage=?,authors=? WHERE id=?`);
 
 const insertItemStmt = db.query<null, [key: string, url: string | null, title: string | null, contentHtml: string | null, datePublished: string | null, authors: string | null, feedId: number]>(`INSERT INTO Item (key,url,title,contentHtml,datePublished,authors,feedId) VALUES (?,?,?,?,unixepoch(?),?,?)`);
-const findItemStmt = db.query<{ id: number; }, [key: string, feedId: number]>('SELECT id FROM Item WHERE key=? AND feedId=?');
-const updateItemStmt = db.query<null, [id: number]>(`UPDATE Item SET id=id WHERE id=?`);
+// const findItemStmt = db.query<{ id: number; }, [key: string, feedId: number]>('SELECT id FROM Item WHERE key=? AND feedId=?');
+const updateItemStmt = db.query<{ id: number; }, [key: string, feedId: number]>(`UPDATE Item SET id=id WHERE key=? AND feedId=? RETURNING id`);
 const selectMinUnReadItemPublishedStmt = db.query<{ date: number; }, [feedId: number]>('SELECT MIN(datePublished) date FROM Item WHERE feedId=? AND read=0');
+const updateItemByUpdatedAtStmt = db.query<null, [feedId: number]>(`UPDATE Item SET updatedAt=0 WHERE feedId=?1 updatedAt>=(SELECT updatedAt FROM Feed WHERE id=?1)`);
 
-const cleanStmt = db.query<null, [id: number]>(`DELETE FROM Item WHERE feedid=? AND star=0 AND read=1 AND id<(SELECT MIN(Item.id) FROM Item JOIN Feed ON Item.feedId=Feed.id WHERE Feed.id=?1 AND Item.updatedAt>=Feed.updatedAt)`);
-const unreadCleanStmt = db.query<null, [id: number]>(`DELETE FROM Item WHERE feedid=?1 AND star=0 AND id<(SELECT MIN(Item.id) FROM Item JOIN Feed ON Item.feedId=Feed.id WHERE Feed.id=?1 AND Item.updatedAt>=Feed.updatedAt)`);
+const cleanStmt = db.query<null, [feedId: number]>(`DELETE FROM Item WHERE feedId=?1 AND star=0 AND read=1 AND updatedAt<(SELECT updatedAt FROM Feed WHERE id=?1)`);
+const unreadCleanStmt = db.query<null, [feedId: number]>(`DELETE FROM Item WHERE feedId=?1 AND star=0 AND updatedAt<(SELECT updatedAt FROM Feed WHERE id=?1)`);
 
 class SubscribeJob extends Subscribe {
     private static catch<R>(target: Object, key: string, descriptor: TypedPropertyDescriptor<(...args: any[]) => Promise<R>>) {
@@ -85,50 +86,36 @@ class SubscribeJob extends Subscribe {
         super(opt);
         const find = findFeedStmt.get(this.url);
         const category = Instance(Category, this.category);
-        if (find && find.category === category.name) {
+        if (find) {
             this.id = find.id;
-        } else {
-            if (find) {
-                updateFeedCategoryStmt.get(category.id, find.id);
-                this.id = find.id;
-            } else {
-                this.id = insertFeedStmt.get(this.url, category.id)!.id;
+            if (find.category !== category.name) {
+                updateFeedCategoryStmt.get(category.id, this.id);
+                updateItemByUpdatedAtStmt.run(this.id);
             }
+        } else {
+            this.id = insertFeedStmt.get(this.url, category.id)!.id;
         }
         subscribeStmt.run(this.id);
         if (!find?.title)
             this.refresh();
 
         if (this.refresher)
-            Instance(SubscribeCron, this.refresher)
-                .refresh.add(this);
+            Instance(SubscribeCron, this.refresher).refresh.add(this);
         if (this.cleaner)
-            Instance(SubscribeCron, this.cleaner)
-                .clean.add(this);
+            Instance(SubscribeCron, this.cleaner).clean.add(this);
         if (this.unreadCleaner)
-            Instance(SubscribeCron, this.unreadCleaner)
-                .unreadClean.add(this);
+            Instance(SubscribeCron, this.unreadCleaner).unreadClean.add(this);
     }
     minPublishedAt?: number;
-    findAndUpdateItem(key: string, date_published?: Date | null) {
-        if (date_published && this.minPublishedAt !== undefined && date_published.getTime() / 1000 < this.minPublishedAt)
-            return true;
-        const item = findItemStmt.get(key, this.id);
-        if (!item)
-            return false;
-        updateItemStmt.run(item.id);
-        return true;
-    }
     @SubscribeJob.catch
     async refresh() {
         const {
             title,
             home_page_url,
-            description,
             authors,
             items,
         } = await super.fetch();
-        updateFeedStmt.run(title, home_page_url ?? null, description ?? null, (authors && JSON.stringify(authors)) ?? null, this.id);
+        updateFeedStmt.run(title, home_page_url ?? null, (authors && JSON.stringify(authors)) ?? null, this.id);
         this.minPublishedAt = selectMinUnReadItemPublishedStmt.get(this.id)?.date;
         for (const item of items)
             await this.insert(item);
@@ -137,7 +124,9 @@ class SubscribeJob extends Subscribe {
     @SubscribeJob.catch
     async insert(item: JSONFeed.Item) {
         const { id: key, date_published } = item!;
-        if (this.findAndUpdateItem(key, date_published))
+        if (date_published && this.minPublishedAt !== undefined && date_published.getTime() / 1000 < this.minPublishedAt)
+            return;
+        if (updateItemStmt.get(key, this.id))
             return;
         const {
             url,

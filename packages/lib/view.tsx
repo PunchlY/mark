@@ -6,7 +6,6 @@ import { CDATA } from './cdata';
 type Data = {
     title: string;
     home_page_url?: string | null;
-    description?: string | null;
     items: {
         id: string,
         url?: string | null;
@@ -20,7 +19,6 @@ type Data = {
 function Atom({
     title,
     home_page_url,
-    description,
     items,
 }: Data, opt?: { xsl?: string; }) {
     const declaration = raw('<?xml version="1.0" encoding="UTF-8"?>');
@@ -35,7 +33,6 @@ function Atom({
                 <id>{home_page_url}</id>
                 <link rel="alternate" type="text/html" href={home_page_url} />
             </>}
-            <subtitle>{description}</subtitle>
             {items.map(({
                 id,
                 title,
