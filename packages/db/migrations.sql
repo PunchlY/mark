@@ -1,22 +1,7 @@
 CREATE TABLE IF NOT EXISTS Category (
     id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-    name TEXT NOT NULL UNIQUE CHECK(length(name) > 0),
-    createdAt INTEGER NOT NULL DEFAULT(unixepoch('now')),
-    updatedAt INTEGER NOT NULL DEFAULT(unixepoch('now'))
+    name TEXT NOT NULL UNIQUE CHECK(length(name) > 0)
 );
-
-CREATE TRIGGER IF NOT EXISTS CategoryUpdatedAt
-AFTER
-UPDATE
-    ON Category BEGIN
-UPDATE
-    Category
-SET
-    updatedAt = unixepoch('now')
-WHERE
-    rowid = NEW.rowid;
-
-END;
 
 CREATE TABLE IF NOT EXISTS Feed (
     id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -24,24 +9,9 @@ CREATE TABLE IF NOT EXISTS Feed (
     homePage TEXT,
     url TEXT NOT NULL UNIQUE CHECK(length(url) > 0),
     authors TEXT,
-    createdAt INTEGER NOT NULL DEFAULT(unixepoch('now')),
-    updatedAt INTEGER NOT NULL DEFAULT(unixepoch('now')),
     categoryId INTEGER NOT NULL,
     FOREIGN KEY (categoryId) REFERENCES Category(id) ON UPDATE RESTRICT ON DELETE CASCADE
 );
-
-CREATE TRIGGER IF NOT EXISTS FeedUpdatedAt
-AFTER
-UPDATE
-    ON Feed BEGIN
-UPDATE
-    Feed
-SET
-    updatedAt = unixepoch('now')
-WHERE
-    rowid = NEW.rowid;
-
-END;
 
 CREATE TABLE IF NOT EXISTS Item (
     id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -53,23 +23,29 @@ CREATE TABLE IF NOT EXISTS Item (
     authors TEXT,
     read INTEGER NOT NULL DEFAULT(false),
     star INTEGER NOT NULL DEFAULT(false),
+    remove INTEGER NOT NULL DEFAULT(false),
     createdAt INTEGER NOT NULL DEFAULT(unixepoch('now')),
-    updatedAt INTEGER NOT NULL DEFAULT(unixepoch('now')),
     feedId INTEGER NOT NULL,
     UNIQUE(key, feedId),
     FOREIGN KEY (feedId) REFERENCES Feed(id) ON UPDATE RESTRICT ON DELETE CASCADE
 );
 
-CREATE TRIGGER IF NOT EXISTS ItemUpdatedAt
+CREATE TRIGGER IF NOT EXISTS ItemStatus
 AFTER
 UPDATE
-    ON Item BEGIN
+    OF read,
+    star ON Item BEGIN
 UPDATE
     Item
 SET
-    updatedAt = unixepoch('now')
+    remove = 0
 WHERE
-    rowid = NEW.rowid;
+    rowid = NEW.rowid
+    AND (
+        NEW.read = 0
+        OR NEW.star = 1
+    )
+    AND remove = 1;
 
 END;
 
@@ -114,7 +90,6 @@ SELECT
     Item.contentHtml,
     ifnull(Item.datePublished, Item.createdAt) publishedAt,
     Item.createdAt,
-    Item.updatedAt,
     Item.read,
     Item.star,
     Feed.id feedId,
