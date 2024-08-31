@@ -97,8 +97,8 @@ class SubscribeJob extends Subscribe {
             this.id = insertFeedStmt.get(this.url, category.id)!.id;
         }
         subscribeStmt.run(this.id);
-        if (!find?.title)
-            this.refresh();
+        if (!find?.title) // for the first time
+            this.refresh(0);
 
         if (this.refresher)
             Instance(SubscribeCron, this.refresher).refresh.add(this);
@@ -108,14 +108,14 @@ class SubscribeJob extends Subscribe {
             Instance(SubscribeCron, this.unreadCleaner).unreadClean.add(this);
     }
     @SubscribeJob.catch
-    async refresh() {
+    async refresh(publishedAt?: number) {
         const {
             title,
             home_page_url,
             authors,
             items,
         } = await super.fetch();
-        const minPublishedAt = selectMinUnReadItemPublishedStmt.get(this.id)?.date!;
+        const minPublishedAt = publishedAt ?? selectMinUnReadItemPublishedStmt.get(this.id)?.date!;
         updateFeedStmt.run(title, home_page_url ?? null, (authors && JSON.stringify(authors)) ?? null, this.id);
         for (const item of items.filter(({ date_published }) => !date_published || date_published.getTime() / 1000 >= minPublishedAt))
             await this.insert(item);
