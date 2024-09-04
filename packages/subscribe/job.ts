@@ -55,12 +55,11 @@ const subscribeStmt = db.query<null, [number]>(`INSERT OR IGNORE INTO Subscribe 
 const findFeedStmt = db.query<{ id: number; title: string | null, category: string; }, [url: string]>(`SELECT Feed.id, Feed.title, Category.name category FROM Feed LEFT JOIN Category ON Feed.categoryId=Category.id WHERE url=?`);
 const insertFeedStmt = db.query<{ id: number; }, [url: string, category: number]>(`INSERT INTO Feed (url,categoryId) VALUES (?,?) RETURNING id`);
 const updateFeedCategoryStmt = db.query<null, [categoryId: number, id: number]>(`UPDATE Feed SET categoryId=? WHERE id=?`);
-const updateFeedStmt = db.query<null, [title: string, home_page_url: string | null, authors: string | null, id: number]>(`UPDATE Feed SET title=?,homePage=?,authors=? WHERE id=?`);
+const updateFeedStmt = db.query<null, [title: string, home_page_url: string | null, authors: string | null, ids: string | null, id: number]>(`UPDATE Feed SET title=?,homePage=?,authors=?,ids=? WHERE id=?`);
+const getFeedIdsStmt = db.query<{ ids: string; }, [feedId: number]>(`SELECT ids FROM Feed WHERE id=?`);
 
 const insertItemStmt = db.query<null, [key: string, url: string | null, title: string | null, contentHtml: string | null, datePublished: string | null, authors: string | null, feedId: number]>(`INSERT INTO Item (key,url,title,contentHtml,datePublished,authors,feedId) VALUES (?,?,?,?,unixepoch(?),?,?)`);
 const findItemStmt = db.query<{ id: number; }, [key: string, feedId: number]>('SELECT id FROM Item WHERE key=? AND feedId=?');
-
-const maxInsertAtStmt = db.query<{ date: number; }, [feedId: number]>('SELECT MAX(createdAt) date FROM Item WHERE feedId=?');
 
 const cleanStmt = db.query<null, [feedId: number, read: boolean | null]>(`DELETE FROM Item WHERE feedId=? AND ifnull(read=?,1) AND star=0 AND remove=1`);
 const setRemoveStmt = db.query<null, [feedId: number, read: boolean | null]>(`UPDATE Item SET remove=1 WHERE feedId=? AND ifnull(read=?,1) AND star=0`);
@@ -103,20 +102,29 @@ class SubscribeJob extends Subscribe {
         if (this.unreadCleaner)
             Instance(SubscribeCron, this.unreadCleaner).unreadClean.add(this);
     }
+    private ids() {
+        const str = getFeedIdsStmt.get(this.id)?.ids;
+        if (!str)
+            return;
+        const ids = JSON.parse(str);
+        if (!Array.isArray(ids) || ids.length === 0)
+            return;
+        return new Set(ids as string[]);
+    }
     @SubscribeJob.catch
     async refresh() {
-        let {
+        const {
             title,
             home_page_url,
             authors,
             items,
         } = await super.fetch();
-        updateFeedStmt.run(title, home_page_url ?? null, (authors && JSON.stringify(authors)) ?? null, this.id);
-        const maxInsertAt = maxInsertAtStmt.get(this.id)?.date;
-        if (maxInsertAt !== undefined)
-            items.filter(({ date_published }) => !date_published || date_published.getTime() / 1000 >= maxInsertAt);
-        for (const item of items)
-            await this.insert(item);
+        const ids = this.ids();
+        updateFeedStmt.run(title, home_page_url ?? null, (authors && JSON.stringify(authors)) ?? null, JSON.stringify(items.map(({ id }) => id)), this.id);
+        for (const item of ids ?
+            items.filter(({ id }) => !ids.has(id)) :
+            items
+        ) await this.insert(item);
         console.debug('[refresh] feedId=%d', this.id);
     }
     @SubscribeJob.catch

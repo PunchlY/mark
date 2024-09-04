@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS Feed (
     homePage TEXT,
     url TEXT NOT NULL UNIQUE CHECK(length(url) > 0),
     authors TEXT,
+    ids TEXT,
     categoryId INTEGER NOT NULL,
     FOREIGN KEY (categoryId) REFERENCES Category(id) ON UPDATE RESTRICT ON DELETE CASCADE
 );
