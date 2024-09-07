@@ -33,8 +33,15 @@ const feedSchema = z.object({
     author: authorSchema.nullish(),
     authors: authorSchema.array().nullish(),
     items: itemSchema.array(),
-}).transform(({ author, authors, ...data }) => {
-    return { ...data, authors: authors || (author && [author]) };
+}).transform(({ author, authors, items, ...data }) => {
+    authors ||= (author && [author]);
+    return {
+        ...data,
+        items: items.map((item) => {
+            item.authors ||= authors;
+            return item;
+        }),
+    };
 });
 
 async function JSONFeed(data?: JSONFeed.$Input, base?: string): Promise<JSONFeed> {

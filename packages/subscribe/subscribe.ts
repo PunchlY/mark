@@ -158,7 +158,7 @@ class Subscribe {
     }
     async fetch() {
         let req = new Request(this.url);
-        let res: JSONFeed = { title: this.url, items: [], authors: null };
+        let res: JSONFeed = { title: this.url, items: [] };
         await Compose.call(this.fetcher, 0, {
             get req() { return req; },
             set req(value) { req = value; },
@@ -170,7 +170,7 @@ class Subscribe {
     }
     async rewrite(item: JSONFeed.Item) {
         await Compose.call(this.rewriter, 0, {
-            get item() { return item; },
+            item,
             get res() { return item; },
             set res(value) { item = value; },
             finalized: false,

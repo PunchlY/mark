@@ -8,10 +8,9 @@ CREATE TABLE IF NOT EXISTS Feed (
     title TEXT CHECK(length(title) > 0),
     homePage TEXT,
     url TEXT NOT NULL UNIQUE CHECK(length(url) > 0),
-    authors TEXT,
     ids TEXT,
     categoryId INTEGER NOT NULL,
-    FOREIGN KEY (categoryId) REFERENCES Category(id) ON UPDATE RESTRICT ON DELETE CASCADE
+    FOREIGN KEY (categoryId) REFERENCES Category(id) ON UPDATE CASCADE ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS Item (
@@ -28,7 +27,7 @@ CREATE TABLE IF NOT EXISTS Item (
     createdAt INTEGER NOT NULL DEFAULT(unixepoch('now')),
     feedId INTEGER NOT NULL,
     UNIQUE(key, feedId),
-    FOREIGN KEY (feedId) REFERENCES Feed(id) ON UPDATE RESTRICT ON DELETE CASCADE
+    FOREIGN KEY (feedId) REFERENCES Feed(id) ON UPDATE CASCADE ON DELETE CASCADE
 );
 
 CREATE TRIGGER IF NOT EXISTS ItemStatus
@@ -52,7 +51,7 @@ END;
 
 CREATE TABLE IF NOT EXISTS Subscribe (
     id INTEGER PRIMARY KEY NOT NULL,
-    FOREIGN KEY (id) REFERENCES Feed(id) ON UPDATE RESTRICT ON DELETE CASCADE
+    FOREIGN KEY (id) REFERENCES Feed(id) ON UPDATE CASCADE ON DELETE CASCADE
 );
 
 CREATE VIEW IF NOT EXISTS CategoryView AS
@@ -87,7 +86,7 @@ SELECT
     Item.id,
     Item.url,
     Item.title,
-    ifnull(Item.authors, Feed.authors) authors,
+    Item.authors,
     Item.contentHtml,
     ifnull(Item.datePublished, Item.createdAt) publishedAt,
     Item.createdAt,

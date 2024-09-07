@@ -55,7 +55,7 @@ const subscribeStmt = db.query<null, [number]>(`INSERT OR IGNORE INTO Subscribe 
 const findFeedStmt = db.query<{ id: number; title: string | null, category: string; }, [url: string]>(`SELECT Feed.id, Feed.title, Category.name category FROM Feed LEFT JOIN Category ON Feed.categoryId=Category.id WHERE url=?`);
 const insertFeedStmt = db.query<{ id: number; }, [url: string, category: number]>(`INSERT INTO Feed (url,categoryId) VALUES (?,?) RETURNING id`);
 const updateFeedCategoryStmt = db.query<null, [categoryId: number, id: number]>(`UPDATE Feed SET categoryId=? WHERE id=?`);
-const updateFeedStmt = db.query<null, [title: string, home_page_url: string | null, authors: string | null, ids: string | null, id: number]>(`UPDATE Feed SET title=?,homePage=?,authors=?,ids=? WHERE id=?`);
+const updateFeedStmt = db.query<null, [title: string, home_page_url: string | null, ids: string | null, id: number]>(`UPDATE Feed SET title=?,homePage=?,ids=? WHERE id=?`);
 const getFeedIdsStmt = db.query<{ ids: string; }, [feedId: number]>(`SELECT ids FROM Feed WHERE id=?`);
 
 const insertItemStmt = db.query<null, [key: string, url: string | null, title: string | null, contentHtml: string | null, datePublished: string | null, authors: string | null, feedId: number]>(`INSERT INTO Item (key,url,title,contentHtml,datePublished,authors,feedId) VALUES (?,?,?,?,unixepoch(?),?,?)`);
@@ -116,11 +116,10 @@ class SubscribeJob extends Subscribe {
         const {
             title,
             home_page_url,
-            authors,
             items,
         } = await super.fetch();
         const ids = this.ids();
-        updateFeedStmt.run(title, home_page_url ?? null, (authors && JSON.stringify(authors)) ?? null, JSON.stringify(items.map(({ id }) => id)), this.id);
+        updateFeedStmt.run(title, home_page_url ?? null, JSON.stringify(items.map(({ id }) => id)), this.id);
         for (const item of ids ?
             items.filter(({ id }) => !ids.has(id)) :
             items
