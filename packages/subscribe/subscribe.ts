@@ -117,11 +117,12 @@ class Feed extends Job {
             unsubscribe: this.#unsubscribe,
         };
     }
+    static setCategory(feed: Feed, name: string) {
+        feed.#category = name;
+    }
     #category = 'Uncategorized';
-    category(name: string) {
-        name = nameSchema.parse(name);
-        this.#category = name;
-        return this;
+    get category() {
+        return this.#category;
     }
     #unsubscribe = false;
     unsubscribe() {
@@ -133,17 +134,16 @@ namespace Feed {
     export interface Data extends GeneratorResult<ReturnType<typeof Feed[typeof Symbol.iterator]>> { }
 }
 
-
-function Once(func: () => Promise<any>, wait?: Promise<any>) {
-    return async () => void await (wait ??= func());
+function Once<T extends (this: any, ...args: any) => any>(func: T, thisArg: ThisParameterType<T>, ...args: Parameters<T>) {
+    let wait;
+    return async () => void await (wait ??= Reflect.apply(func, thisArg, args));
 }
 async function Compose(this: ArrayLike<[cb: (context: any, next: () => Promise<void>) => any, param?: any]>, index: number, context: { finalized: boolean, res: object; } & Record<any, any>, parse: (value: any) => any): Promise<any> {
     if (this.length === index) return;
     const [cb, param] = this[index];
-    const ctx = Object.create(context, {
+    const res = await cb(Object.create(context, {
         param: { get() { return param; } },
-    });
-    const res = await cb(ctx, Once(Compose.bind(this, index + 1, context, parse)));
+    }), Once(Compose, this, index + 1, context, parse));
     if (context.finalized)
         return;
     if (res)
@@ -179,7 +179,7 @@ class Subscribe {
     }
     async test() {
         const feed = await this.fetch();
-        feed.items = await Promise.all(feed.items.map((item) => this.rewrite(item)));
+        feed.items = await Promise.all(feed.items.map(this.rewrite, this));
         return feed;
     }
 }
@@ -190,11 +190,14 @@ namespace Factory {
     export const rewriter: <T>(rewrite: Job.Rewriter<T>) => typeof rewrite = Factory;
 }
 
-function category(name?: string) {
-    if (arguments.length === 0)
+function category(name?: string, ...feeds: Feed[]) {
+    if (arguments.length === 0) {
         name = '';
-    else
+    } else {
         name = nameSchema.parse(name);
+        for (const feed of feeds)
+            Feed.setCategory(feed, name);
+    }
     return Instance(Category, name);
 }
 
