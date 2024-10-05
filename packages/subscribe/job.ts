@@ -21,8 +21,6 @@ plugin({
 
 class SubscribeCron extends Cron {
     refresh = new Set<SubscribeJob>();
-    clean = new Set<SubscribeJob>();
-    unreadClean = new Set<SubscribeJob>();
     constructor(pattern: string | Date) {
         super(pattern, { paused: true });
         // @ts-ignore
@@ -32,10 +30,6 @@ class SubscribeCron extends Cron {
     async fn(cron: typeof this, ctx: any) {
         for (const subscribe of this.refresh.values())
             await subscribe.refresh();
-        for (const subscribe of this.clean.values())
-            await subscribe.clean();
-        for (const subscribe of this.unreadClean.values())
-            await subscribe.unreadClean();
     }
 }
 
@@ -61,24 +55,23 @@ const getFeedIdsStmt = db.query<{ ids: string; }, [feedId: number]>(`SELECT ids 
 const insertItemStmt = db.query<null, [key: string, url: string | null, title: string | null, contentHtml: string | null, datePublished: string | null, authors: string | null, feedId: number]>(`INSERT INTO Item (key,url,title,contentHtml,datePublished,authors,feedId) VALUES (?,?,?,?,unixepoch(?),?,?)`);
 const findItemStmt = db.query<{ id: number; }, [key: string, feedId: number]>('SELECT id FROM Item WHERE key=? AND feedId=?');
 
-const cleanStmt = db.query<null, [feedId: number, read: boolean | null]>(`DELETE FROM Item WHERE feedId=? AND ifnull(read=?,1) AND star=0 AND remove=1`);
-const setRemoveStmt = db.query<null, [feedId: number, read: boolean | null]>(`UPDATE Item SET remove=1 WHERE feedId=? AND ifnull(read=?,1) AND star=0`);
+const cleanStmt = db.query<null, [feedId: number, age: number]>(`DELETE FROM Item WHERE feedId=? AND read=1 AND star=0 AND age>=?`);
+const readStmt = db.query<null, [feedId: number, age: number]>(`UPDATE Item SET read=1,age=0 WHERE feedId=? AND read=0 AND star=0 AND age>=?`);
+const addAgeStmt = db.query<null, [feedId: number, read: boolean]>(`UPDATE Item SET age=age+1 WHERE feedId=? AND read=? AND star=0`);
 
 class SubscribeJob extends Subscribe {
-    private static catch<R>(target: Object, key: string, descriptor: TypedPropertyDescriptor<(...args: any[]) => Promise<R>>) {
-        return {
-            ...descriptor,
-            async value(this: SubscribeJob) {
-                try {
-                    await Reflect.apply(descriptor.value!, this, arguments);
-                } catch (error) {
-                    if (error instanceof Error)
-                        error = error.message;
-                    console.error('[%s] feedId=%d error=%s', key, this.id, error);
-                }
+    static clean = Object.assign(Cron('0 * * * *', { paused: false }, ({ list }: typeof SubscribeJob.clean) => {
+        for (const subscribe of list) {
+            if (subscribe.cleaner) {
+                addAgeStmt.run(subscribe.id, true);
+                cleanStmt.run(subscribe.id, subscribe.cleaner);
             }
-        } as TypedPropertyDescriptor<(...args: any[]) => Promise<R | undefined>>;
-    }
+            if (subscribe.reader) {
+                addAgeStmt.run(subscribe.id, false);
+                readStmt.run(subscribe.id, subscribe.reader);
+            }
+        }
+    }), { list: new Set<SubscribeJob>() });
     id: number;
     constructor(opt: Feed.Data) {
         super(opt);
@@ -97,58 +90,52 @@ class SubscribeJob extends Subscribe {
 
         if (this.refresher)
             Instance(SubscribeCron, this.refresher).refresh.add(this);
-        if (this.cleaner)
-            Instance(SubscribeCron, this.cleaner).clean.add(this);
-        if (this.unreadCleaner)
-            Instance(SubscribeCron, this.unreadCleaner).unreadClean.add(this);
+        if (this.cleaner || this.reader)
+            SubscribeJob.clean.list.add(this);
     }
-    private ids() {
+    ids() {
         const str = getFeedIdsStmt.get(this.id)?.ids;
         if (!str)
             return;
         const ids = JSON.parse(str);
         if (!Array.isArray(ids) || ids.length === 0)
             return;
-        return new Set(ids as string[]);
+        return new Set<string>(ids);
     }
-    @SubscribeJob.catch
     async refresh() {
-        const {
-            title,
-            home_page_url,
-            items,
-        } = await super.fetch();
-        const ids = this.ids();
-        updateFeedStmt.run(title, home_page_url ?? null, JSON.stringify(items.map(({ id }) => id)), this.id);
-        for (const item of ids ?
-            items.filter(({ id }) => !ids.has(id)) :
-            items
-        ) await this.insert(item);
-        console.debug('[refresh] feedId=%d', this.id);
+        try {
+            const {
+                title,
+                home_page_url,
+                items,
+            } = await super.fetch();
+            const ids = this.ids();
+            updateFeedStmt.run(title, home_page_url ?? null, JSON.stringify(items.map(({ id }) => id)), this.id);
+            for (const item of ids ?
+                items.filter(({ id }) => !ids.has(id)) :
+                items
+            ) await this.insert(item);
+            console.debug('[refresh] feedId=%d', this.id);
+        } catch (error) {
+            console.error('[refresh] feedId=%d error=%s', this.id, error);
+        }
     }
-    @SubscribeJob.catch
     async insert(item: JSONFeed.Item) {
         const key = item.id, date_published = item.date_published?.toISOString() ?? null;
-        if (findItemStmt.get(key, this.id))
-            return;
-        const {
-            url,
-            title,
-            content_html,
-            authors,
-        } = await this.rewrite(item);
-        insertItemStmt.get(key, url ?? null, title ?? null, content_html ?? null, date_published, (authors && JSON.stringify(authors)) ?? null, this.id);
-        console.debug('[insert] feedId=%d url=%s', this.id, key);
-    }
-    @SubscribeJob.catch
-    async clean() {
-        cleanStmt.run(this.id, true);
-        setRemoveStmt.run(this.id, true);
-    }
-    @SubscribeJob.catch
-    async unreadClean() {
-        cleanStmt.run(this.id, null);
-        setRemoveStmt.run(this.id, null);
+        try {
+            if (findItemStmt.get(key, this.id))
+                return;
+            const {
+                url,
+                title,
+                content_html,
+                authors,
+            } = await this.rewrite(item);
+            insertItemStmt.get(key, url ?? null, title ?? null, content_html ?? null, date_published, (authors && JSON.stringify(authors)) ?? null, this.id);
+            console.debug('[insert] feedId=%d id=%s', this.id, key);
+        } catch (error) {
+            console.error('[insert] feedId=%d id=%s error=%s', this.id, key, error);
+        }
     }
 }
 

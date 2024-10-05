@@ -2,37 +2,38 @@ import { z } from 'zod';
 import { GetCache, GetCacheList, Instance } from 'lib/cache';
 import JSONFeed from './jsonfeed';
 
+const cronSchema = z.string();
 const nameSchema = z.string().min(1);
 const urlSchema = z.string().url();
+const intervalSchema = z.number().positive();
 
 namespace Job {
-    export interface Fetcher<T> {
-        (ctx: {
-            req: Request;
-            res: JSONFeed;
-            readonly finalized: boolean;
-            readonly param: T;
-        }, next: () => Promise<void>): JSONFeed.$Input | void | PromiseLike<JSONFeed.$Input | void>;
+    interface Handle<C, R> {
+        (ctx: C, next: () => Promise<void>): R | PromiseLike<R>;
     }
-    export interface Rewriter<T> {
-        (ctx: {
-            readonly item: JSONFeed.Item;
-            res: JSONFeed.Item;
-            readonly finalized: boolean;
-            readonly param: T;
-        }, next: () => Promise<void>): JSONFeed.Item.$Input | void | PromiseLike<JSONFeed.Item.$Input | void>;
-    }
+    export interface Fetcher<T> extends Handle<{
+        req: Request;
+        res: JSONFeed;
+        readonly finalized: boolean;
+        readonly param: T;
+    }, JSONFeed.$Input | void> { }
+    export interface Rewriter<T> extends Handle<{
+        readonly item: JSONFeed.Item;
+        res: JSONFeed.Item;
+        readonly finalized: boolean;
+        readonly param: T;
+    }, JSONFeed.Item.$Input | void> { }
 }
 abstract class Job {
-    static defaultFetcher = [(ctx: { req: Request; }) => fetch(ctx.req)] as [(ctx: { req: Request; }) => Promise<Response>];
+    static defaultFetcher = [({ req }) => fetch(req)] as [(ctx: { req: Request; }) => Promise<Response>];
     static getData(job: Job) {
         return {
             key: job.#key,
             fetcher: job.#fetcher,
             rewriter: job.#rewriter,
-            refresher: job.#refresher,
-            cleaner: job.#cleaner,
-            unreadCleaner: job.#unreadCleaner,
+            refresher: job.#refresh,
+            cleaner: job.#clean,
+            reader: job.#read,
         };
     }
     #key: string;
@@ -40,40 +41,32 @@ abstract class Job {
         this.#key = key;
     }
     #fetcher: [cb: Job.Fetcher<any>, param?: any][] = [];
-    fetcher(fetch: Job.Fetcher<undefined>): this;
-    fetcher<T>(fetch: Job.Fetcher<T>, param: T): this;
-    fetcher(fetch: Job.Fetcher<any>, param?: any) {
+    fetch(fetcher: Job.Fetcher<undefined>): this;
+    fetch<T>(fetch: Job.Fetcher<T>, param: T): this;
+    fetch(fetch: Job.Fetcher<any>, param?: any) {
         this.#fetcher.push([fetch, param]);
         return this;
     }
     #rewriter: [cb: Job.Rewriter<any>, param?: any][] = [];
-    rewriter(rewrite: Job.Rewriter<undefined>): this;
-    rewriter<T>(rewrite: Job.Rewriter<T>, param: T): this;
-    rewriter(rewrite: Job.Rewriter<any>, param?: any) {
+    rewrite(rewriter: Job.Rewriter<undefined>): this;
+    rewrite<T>(rewrite: Job.Rewriter<T>, param: T): this;
+    rewrite(rewrite: Job.Rewriter<any>, param?: any) {
         this.#rewriter.push([rewrite, param]);
         return this;
     }
-    #cron(pattern?: string | Date | boolean) {
-        if (typeof pattern === 'string')
-            return pattern;
-        if (pattern instanceof Date)
-            return pattern;
-        if (!pattern)
-            return false;
-    }
-    #refresher?: string | Date | false;
-    refresher(cron?: string | Date | boolean) {
-        this.#refresher = this.#cron(cron);
+    #refresh?: string;
+    refresh(cron: string) {
+        this.#refresh = cronSchema.parse(cron);
         return this;
     }
-    #cleaner?: string | Date | false;
-    cleaner(cron?: string | Date | boolean) {
-        this.#cleaner = this.#cron(cron);
+    #clean?: number;
+    clean(minute: number) {
+        this.#clean = intervalSchema.parse(minute);
         return this;
     }
-    #unreadCleaner?: string | Date | false;
-    unreadCleaner(cron?: string | Date | boolean) {
-        this.#unreadCleaner = this.#cron(cron);
+    #read?: number;
+    read(minute: number) {
+        this.#read = intervalSchema.parse(minute);
         return this;
     }
 }
@@ -92,7 +85,7 @@ class Feed extends Job {
     #data(categoryName?: string) {
         const feed = Job.getData(this);
         const fetcher = [...feed.fetcher], rewriter = [...feed.rewriter];
-        let { refresher, cleaner, unreadCleaner } = feed;
+        let { refresher, cleaner, reader } = feed;
         if (!this.#unsubscribe || categoryName)
             for (const category of [
                 GetCache(Category, categoryName ? nameSchema.parse(categoryName) : this.#category),
@@ -103,7 +96,7 @@ class Feed extends Job {
                 rewriter.push(...data.rewriter);
                 refresher ??= data.refresher;
                 cleaner ??= data.cleaner;
-                unreadCleaner ??= data.unreadCleaner;
+                reader ??= data.reader;
             }
         fetcher.push(Job.defaultFetcher);
         return {
@@ -111,7 +104,7 @@ class Feed extends Job {
             rewriter,
             refresher,
             cleaner,
-            unreadCleaner,
+            reader,
             url: feed.key,
             category: this.#category,
             unsubscribe: this.#unsubscribe,

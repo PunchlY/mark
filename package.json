@@ -2,14 +2,14 @@
   "type": "module",
   "version": "3.1.0",
   "scripts": {
-    "dev": "clear && bun run --hot src/cli.ts",
-    "start": "clear && NODE_ENV=production bun run src/cli.ts"
+    "dev": "clear && bun run --hot src/index.ts",
+    "start": "clear && NODE_ENV=production bun run src/index.ts"
   },
   "workspaces": [
     "packages/*"
   ],
   "dependencies": {
-    "@hono/zod-validator": "^0.2.2",
+    "@hono/zod-validator": "^0.3.0",
     "@rgrove/parse-xml": "^4.1.0",
     "croner": "^8.1.1",
     "hono": "^4.4.0",

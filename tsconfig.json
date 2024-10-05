@@ -5,9 +5,8 @@
     "moduleResolution": "Bundler",
     "experimentalDecorators": true,
     "strict": true,
-    "jsx": "react",
-    "jsxFactory": "createElement",
-    "jsxFragmentFactory": "Fragment",
+    "jsx": "react-jsx",
+    "jsxImportSource": "hono/jsx",
     "paths": {
       "package.json": [
         "./package.json"

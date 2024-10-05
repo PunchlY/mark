@@ -1,6 +1,5 @@
 import { escapeHTML } from 'bun';
 import { html, raw } from 'hono/html';
-import { Fragment, createElement } from 'hono/jsx';
 import { CDATA } from './cdata';
 
 type Data = {

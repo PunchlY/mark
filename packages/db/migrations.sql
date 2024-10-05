@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS Item (
     authors TEXT,
     read INTEGER NOT NULL DEFAULT(false),
     star INTEGER NOT NULL DEFAULT(false),
-    remove INTEGER NOT NULL DEFAULT(false),
+    age INTEGER NOT NULL DEFAULT(0) CHECK(age >= 0),
     createdAt INTEGER NOT NULL DEFAULT(unixepoch('now')),
     feedId INTEGER NOT NULL,
     UNIQUE(key, feedId),
@@ -38,14 +38,10 @@ UPDATE
 UPDATE
     Item
 SET
-    remove = 0
+    age = 0
 WHERE
-    rowid = NEW.rowid
-    AND (
-        NEW.read = 0
-        OR NEW.star = 1
-    )
-    AND remove = 1;
+    NEW.read = false
+    OR NEW.star = true;
 
 END;
 
