@@ -60,13 +60,13 @@ abstract class Job {
         return this;
     }
     #clean?: number;
-    clean(minute: number) {
-        this.#clean = intervalSchema.parse(minute);
+    clean(hour: number) {
+        this.#clean = intervalSchema.parse(hour);
         return this;
     }
     #read?: number;
-    read(minute: number) {
-        this.#read = intervalSchema.parse(minute);
+    markRead(hour: number) {
+        this.#read = intervalSchema.parse(hour);
         return this;
     }
 }

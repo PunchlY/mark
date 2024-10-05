@@ -60,7 +60,7 @@ const readStmt = db.query<null, [feedId: number, age: number]>(`UPDATE Item SET 
 const addAgeStmt = db.query<null, [feedId: number, read: boolean]>(`UPDATE Item SET age=age+1 WHERE feedId=? AND read=? AND star=0`);
 
 class SubscribeJob extends Subscribe {
-    static clean = Object.assign(Cron('* * * * *', { paused: true }, ({ list }: typeof SubscribeJob.clean) => {
+    static clean = Object.assign(Cron('0 * * * *', { paused: true }, ({ list }: typeof SubscribeJob.clean) => {
         for (const subscribe of list) {
             if (subscribe.cleaner) {
                 addAgeStmt.run(subscribe.id, true);

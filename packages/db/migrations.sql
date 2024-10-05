@@ -40,8 +40,8 @@ UPDATE
 SET
     age = 0
 WHERE
-    NEW.read = false
-    OR NEW.star = true;
+    NEW.read != read
+    OR NEW.star != star;
 
 END;
 
