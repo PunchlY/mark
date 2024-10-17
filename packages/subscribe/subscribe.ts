@@ -15,17 +15,17 @@ namespace Job {
         req: Request;
         res: JSONFeed;
         readonly finalized: boolean;
-        readonly param: T;
+        readonly params: T;
     }, JSONFeed.$Input | void> { }
     export interface Rewriter<T> extends Handle<{
         readonly item: JSONFeed.Item;
         res: JSONFeed.Item;
         readonly finalized: boolean;
-        readonly param: T;
+        readonly params: T;
     }, JSONFeed.Item.$Input | void> { }
 }
 abstract class Job {
-    static defaultFetcher = [({ req }) => fetch(req)] as [(ctx: { req: Request; }) => Promise<Response>];
+    static defaultFetcher: [Job.Fetcher<[]>, []] = [({ req }) => fetch(req), []];
     static getData(job: Job) {
         return {
             key: job.#key,
@@ -40,18 +40,18 @@ abstract class Job {
     constructor(key: string) {
         this.#key = key;
     }
-    #fetcher: [cb: Job.Fetcher<any>, param?: any][] = [];
-    fetch(fetcher: Job.Fetcher<undefined>): this;
-    fetch<T>(fetch: Job.Fetcher<T>, param: T): this;
-    fetch(fetch: Job.Fetcher<any>, param?: any) {
-        this.#fetcher.push([fetch, param]);
+    #fetcher: [cb: Job.Fetcher<any>, params: any[]][] = [];
+    fetch<T extends Job.Fetcher<any>>(rewrite: T, ...params: T extends Job.Fetcher<infer P> ? P : never): this;
+    fetch<T extends any[] = []>(fetch: Job.Fetcher<T>, ...params: T): this;
+    fetch(fetch: Job.Fetcher<any[]>, ...params: any[]) {
+        this.#fetcher.push([fetch, params]);
         return this;
     }
-    #rewriter: [cb: Job.Rewriter<any>, param?: any][] = [];
-    rewrite(rewriter: Job.Rewriter<undefined>): this;
-    rewrite<T>(rewrite: Job.Rewriter<T>, param: T): this;
-    rewrite(rewrite: Job.Rewriter<any>, param?: any) {
-        this.#rewriter.push([rewrite, param]);
+    #rewriter: [cb: Job.Rewriter<any>, params: any[]][] = [];
+    rewrite<T extends Job.Rewriter<any>>(rewrite: T, ...params: T extends Job.Rewriter<infer P> ? P : never): this;
+    rewrite<T extends any[] = []>(rewrite: Job.Rewriter<T>, ...params: T): this;
+    rewrite(rewrite: Job.Rewriter<any[]>, ...params: any[]) {
+        this.#rewriter.push([rewrite, params]);
         return this;
     }
     #refresh?: string;
@@ -131,11 +131,11 @@ function Once<T extends (this: any, ...args: any) => any>(func: T, thisArg: This
     let wait;
     return async () => void await (wait ??= Reflect.apply(func, thisArg, args));
 }
-async function Compose(this: ArrayLike<[cb: (context: any, next: () => Promise<void>) => any, param?: any]>, index: number, context: { finalized: boolean, res: object; } & Record<any, any>, parse: (value: any) => any): Promise<any> {
+async function Compose(this: ArrayLike<[cb: (context: any, next: () => Promise<void>) => any, params?: any[]]>, index: number, context: { finalized: boolean, res: object; } & Record<any, any>, parse: (value: any) => any): Promise<any> {
     if (this.length === index) return;
-    const [cb, param] = this[index];
+    const [cb, params] = this[index];
     const res = await cb(Object.create(context, {
-        param: { get() { return param; } },
+        params: { get() { return params; } },
     }), Once(Compose, this, index + 1, context, parse));
     if (context.finalized)
         return;
@@ -179,8 +179,8 @@ class Subscribe {
 
 namespace Factory {
     const Factory = (cb: (...args: any[]) => any) => cb;
-    export const fetcher: <T>(fetch: Job.Fetcher<T>) => typeof fetch = Factory;
-    export const rewriter: <T>(rewrite: Job.Rewriter<T>) => typeof rewrite = Factory;
+    export const fetcher: <T extends any[]>(fetch: Job.Fetcher<T>) => typeof fetch = Factory;
+    export const rewriter: <T extends any[]>(rewrite: Job.Rewriter<T>) => typeof rewrite = Factory;
 }
 
 function category(name?: string, ...feeds: Feed[]) {

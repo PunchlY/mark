@@ -39,6 +39,7 @@ const feedSchema = z.object({
         ...data,
         items: items.map((item) => {
             item.authors ||= authors;
+            // item.url &&= new URL(item.url, data.home_page_url ?? undefined).href;
             return item;
         }),
     };
