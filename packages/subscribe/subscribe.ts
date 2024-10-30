@@ -1,28 +1,25 @@
 import { z } from 'zod';
-import { GetCache, GetCacheList, Instance } from 'lib/cache';
 import JSONFeed from './jsonfeed';
+import { backMapConstruct } from 'lib/backmap';
 
-const cronSchema = z.string();
 const nameSchema = z.string().min(1);
 const urlSchema = z.string().url();
-const intervalSchema = z.number().positive();
+const intervalSchema = z.number().positive().or(z.boolean().transform((value) => value && undefined));
 
 namespace Job {
-    interface Handle<C, R> {
-        (ctx: C, next: () => Promise<void>): R | PromiseLike<R>;
+    interface Handle<C, R, P extends any[]> {
+        (ctx: C, next: () => Promise<void>, ...args: P): R | PromiseLike<R>;
     }
-    export interface Fetcher<T> extends Handle<{
+    export interface Fetcher<T extends any[]> extends Handle<{
         req: Request;
         res: JSONFeed;
         readonly finalized: boolean;
-        readonly params: T;
-    }, JSONFeed.$Input | void> { }
-    export interface Rewriter<T> extends Handle<{
+    }, JSONFeed.$Input | void, T> { }
+    export interface Rewriter<T extends any[]> extends Handle<{
         readonly item: JSONFeed.Item;
         res: JSONFeed.Item;
         readonly finalized: boolean;
-        readonly params: T;
-    }, JSONFeed.Item.$Input | void> { }
+    }, JSONFeed.Item.$Input | void, T> { }
 }
 abstract class Job {
     static defaultFetcher: [Job.Fetcher<[]>, []] = [({ req }) => fetch(req), []];
@@ -41,45 +38,49 @@ abstract class Job {
         this.#key = key;
     }
     #fetcher: [cb: Job.Fetcher<any>, params: any[]][] = [];
-    fetch<T extends Job.Fetcher<any>>(rewrite: T, ...params: T extends Job.Fetcher<infer P> ? P : never): this;
-    fetch<T extends any[] = []>(fetch: Job.Fetcher<T>, ...params: T): this;
-    fetch(fetch: Job.Fetcher<any[]>, ...params: any[]) {
+    fetch<T extends any[], C extends Job.Fetcher<T> = Job.Fetcher<T>>(fetch: C, ...params: C extends Job.Fetcher<infer P> ? P : T): this {
         this.#fetcher.push([fetch, params]);
         return this;
     }
     #rewriter: [cb: Job.Rewriter<any>, params: any[]][] = [];
-    rewrite<T extends Job.Rewriter<any>>(rewrite: T, ...params: T extends Job.Rewriter<infer P> ? P : never): this;
-    rewrite<T extends any[] = []>(rewrite: Job.Rewriter<T>, ...params: T): this;
-    rewrite(rewrite: Job.Rewriter<any[]>, ...params: any[]) {
+    rewrite<T extends any[], C extends Job.Rewriter<T> = Job.Rewriter<T>>(rewrite: C, ...params: C extends Job.Rewriter<infer P> ? P : T) {
         this.#rewriter.push([rewrite, params]);
         return this;
     }
-    #refresh?: string;
-    refresh(cron: string) {
-        this.#refresh = cronSchema.parse(cron);
+    #refresh?: number | false;
+    refresh(seconds: number | boolean) {
+        this.#refresh = intervalSchema.parse(seconds);
         return this;
     }
-    #clean?: number;
-    clean(hour: number) {
-        this.#clean = intervalSchema.parse(hour);
+    #clean?: number | false;
+    clean(seconds: number | boolean) {
+        this.#clean = intervalSchema.parse(seconds);
         return this;
     }
-    #read?: number;
-    markRead(hour: number) {
-        this.#read = intervalSchema.parse(hour);
+    #read?: number | false;
+    markRead(seconds: number | boolean) {
+        this.#read = intervalSchema.parse(seconds);
         return this;
     }
 }
 
-class Category extends Job { }
+class Category extends Job {
+    static #list = new Map<string, Category>();
+    static construct = backMapConstruct(this.#list, this);
+    static get(category: string) {
+        return this.#list.get(category);
+    }
+}
 
 class Feed extends Job {
+    static #list = new Map<string, Feed>();
+    static construct = backMapConstruct(this.#list, this);
     static async test(url: string, category?: string) {
-        const feed = GetCache(this, url) ?? new this(url);
+        const feed = this.construct(url) ?? new this(url);
         return await new Subscribe(feed.#data(category)).test();
     }
     static *[Symbol.iterator]() {
-        for (const [, subscribe] of GetCacheList(Feed))
+        for (const subscribe of this.#list.values())
             yield subscribe.#data();
     }
     #data(categoryName?: string) {
@@ -88,8 +89,8 @@ class Feed extends Job {
         let { refresher, cleaner, reader } = feed;
         if (!this.#unsubscribe || categoryName)
             for (const category of [
-                GetCache(Category, categoryName ? nameSchema.parse(categoryName) : this.#category),
-                GetCache(Category, ''),
+                Category.get(categoryName ? nameSchema.parse(categoryName) : this.#category),
+                Category.get(''),
             ]) if (category) {
                 const data = Job.getData(category);
                 fetcher.push(...data.fetcher);
@@ -127,16 +128,14 @@ namespace Feed {
     export interface Data extends GeneratorResult<ReturnType<typeof Feed[typeof Symbol.iterator]>> { }
 }
 
-function Once<T extends (this: any, ...args: any) => any>(func: T, thisArg: ThisParameterType<T>, ...args: Parameters<T>) {
+function once<T extends (this: any, ...args: any) => any>(func: T, thisArg: ThisParameterType<T>, ...args: Parameters<T>) {
     let wait;
     return async () => void await (wait ??= Reflect.apply(func, thisArg, args));
 }
-async function Compose(this: ArrayLike<[cb: (context: any, next: () => Promise<void>) => any, params?: any[]]>, index: number, context: { finalized: boolean, res: object; } & Record<any, any>, parse: (value: any) => any): Promise<any> {
+async function compose(this: ArrayLike<[cb: (context: any, next: () => Promise<void>, ...args: any[]) => any, params: any[]]>, index: number, context: { finalized: boolean, res: object; } & Record<any, any>, parse: (value: any) => any): Promise<any> {
     if (this.length === index) return;
     const [cb, params] = this[index];
-    const res = await cb(Object.create(context, {
-        params: { get() { return params; } },
-    }), Once(Compose, this, index + 1, context, parse));
+    const res = await cb(Object.create(context), once(compose, this, index + 1, context, parse), ...params);
     if (context.finalized)
         return;
     if (res)
@@ -152,7 +151,7 @@ class Subscribe {
     async fetch() {
         let req = new Request(this.url);
         let res: JSONFeed = { title: this.url, items: [] };
-        await Compose.call(this.fetcher, 0, {
+        await compose.call(this.fetcher, 0, {
             get req() { return req; },
             set req(value) { req = value; },
             get res() { return res; },
@@ -162,7 +161,7 @@ class Subscribe {
         return res;
     }
     async rewrite(item: JSONFeed.Item) {
-        await Compose.call(this.rewriter, 0, {
+        await compose.call(this.rewriter, 0, {
             item,
             get res() { return item; },
             set res(value) { item = value; },
@@ -183,6 +182,8 @@ namespace Factory {
     export const rewriter: <T extends any[]>(rewrite: Job.Rewriter<T>) => typeof rewrite = Factory;
 }
 
+function category(): Category;
+function category(name: string, ...feeds: Feed[]): Category;
 function category(name?: string, ...feeds: Feed[]) {
     if (arguments.length === 0) {
         name = '';
@@ -191,12 +192,12 @@ function category(name?: string, ...feeds: Feed[]) {
         for (const feed of feeds)
             Feed.setCategory(feed, name);
     }
-    return Instance(Category, name);
+    return Category.construct(name);
 }
 
 function subscribe(url: string) {
     url = urlSchema.parse(url);
-    return Instance(Feed, url);
+    return Feed.construct(url);
 }
 
 export type { Job };

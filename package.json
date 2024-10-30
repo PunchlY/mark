@@ -9,13 +9,12 @@
     "packages/*"
   ],
   "dependencies": {
-    "@hono/zod-validator": "^0.3.0",
-    "@rgrove/parse-xml": "^4.1.0",
-    "croner": "^8.1.1",
-    "hono": "^4.4.0",
+    "@hono/zod-validator": "^0.4.1",
+    "@rgrove/parse-xml": "^4.2.0",
+    "hono": "^4.6.8",
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "@types/bun": "^1.1.9"
+    "@types/bun": "latest"
   }
 }

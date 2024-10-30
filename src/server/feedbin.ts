@@ -18,7 +18,7 @@ const app = new Hono<{
 }));
 
 app.get('/authentication.json', async (c) => {
-    return c.text('OK', 200);
+    return c.body(null, 200, { 'Content-Type': 'application/json' });
 });
 
 const subscriptionsStmt = db.query<{
@@ -26,56 +26,38 @@ const subscriptionsStmt = db.query<{
     feed_id: number;
     feed_url: string;
     site_url: string;
-}, []>('SELECT id, id feed_id, title, url feed_url, homePage site_url FROM FeedView');
+}, []>('SELECT id, id feed_id, title, url feed_url, homePage site_url FROM Feed WHERE title IS NOT NULL');
 app.get('/subscriptions.json', async (c) => {
-    const feeds = subscriptionsStmt.all();
-    return c.json(feeds);
+    return c.json(subscriptionsStmt.all());
 });
 
 const taggingsStmt = db.query<{
     id: number;
     feed_id: number;
     name: string;
-}, []>('SELECT categoryId id, id feed_id, category name FROM FeedView');
+}, []>('SELECT Feed.id, Feed.id feed_id, name FROM Feed LEFT JOIN Category ON Feed.categoryId=Category.id WHERE title IS NOT NULL');
 app.get('/taggings.json', async (c) => {
-    const taggings = taggingsStmt.all();
-    return c.json(taggings);
+    return c.json(taggingsStmt.all());
 });
 
-const unreadEntriesStmt = db.query<{ id: number; }, []>('SELECT id FROM ItemView WHERE read=0');
+const unreadEntriesStmt = db.query<{ id: number; }, []>('SELECT id FROM Item WHERE read=0');
+const updatEntriesReadStmt = db.query<{ id: number; }, [read: boolean, idsJSON: string]>('UPDATE Item SET read=? WHERE id IN (SELECT value from json_each(?,"$.unread_entries")) RETURNING id');
 app.get('/unread_entries.json', async (c) => {
-    const entries = unreadEntriesStmt.all();
-    return c.json(entries.map(({ id }) => id));
-}).post(zValidator('json', z.object({
-    unread_entries: z.coerce.number().int().positive().array(),
-})), async (c) => {
-    const { unread_entries } = c.req.valid('json');
-    const entries = db.prepare<{ id: number; }, []>(`UPDATE ItemView SET read=0 WHERE id IN (${unread_entries}) RETURNING id`).all();
-    return c.json(entries.map(({ id }) => id));
-}).delete(zValidator('json', z.object({
-    unread_entries: z.coerce.number().int().positive().array(),
-})), async (c) => {
-    const { unread_entries } = c.req.valid('json');
-    const entries = db.prepare<{ id: number; }, []>(`UPDATE ItemView SET read=1 WHERE id IN (${unread_entries}) RETURNING id`).all();
-    return c.json(entries.map(({ id }) => id));
+    return c.json(unreadEntriesStmt.all().map(({ id }) => id));
+}).post(async (c) => {
+    return c.json(updatEntriesReadStmt.all(false, await c.req.text()).map(({ id }) => id));
+}).delete(async (c) => {
+    return c.json(updatEntriesReadStmt.all(true, await c.req.text()).map(({ id }) => id));
 });
 
-const starredEntriesStmt = db.query<{ id: number; }, []>('SELECT id FROM ItemView WHERE star=1');
+const starredEntriesStmt = db.query<{ id: number; }, []>('SELECT id FROM Item WHERE star=1');
+const updatEntriesStarStmt = db.query<{ id: number; }, [star: boolean, idsJSON: string]>('UPDATE Item SET star=? WHERE id IN (SELECT value from json_each(?,"$.starred_entries")) RETURNING id');
 app.get('/starred_entries.json', async (c) => {
-    const entries = starredEntriesStmt.all();
-    return c.json(entries.map(({ id }) => id));
-}).post(zValidator('json', z.object({
-    starred_entries: z.coerce.number().int().positive().array(),
-})), async (c) => {
-    const { starred_entries } = c.req.valid('json');
-    const entries = db.prepare<{ id: number; }, []>(`UPDATE ItemView SET star=1 WHERE id IN (${starred_entries}) RETURNING id`).all();
-    return c.json(entries.map(({ id }) => id));
-}).delete(zValidator('json', z.object({
-    starred_entries: z.coerce.number().int().positive().array(),
-})), async (c) => {
-    const { starred_entries } = c.req.valid('json');
-    const entries = db.prepare<{ id: number; }, []>(`UPDATE ItemView SET star=0 WHERE id IN (${starred_entries}) RETURNING id`).all();
-    return c.json(entries.map(({ id }) => id));
+    return c.json(starredEntriesStmt.all().map(({ id }) => id));
+}).post(async (c) => {
+    return c.json(updatEntriesStarStmt.all(true, await c.req.text()).map(({ id }) => id));
+}).delete(async (c) => {
+    return c.json(updatEntriesStarStmt.all(false, await c.req.text()).map(({ id }) => id));
 });
 
 const entriesStmt = db.query<unknown, [{
@@ -84,50 +66,28 @@ const entriesStmt = db.query<unknown, [{
     limit: number;
     offset: number;
 }]>(
-    'SELECT id, feedId feed_id, title, url, authors, contentHtml content, publishedAt, createdAt FROM ItemView WHERE ifnull(read=$read,1) AND ifnull(star=$star,1) ORDER BY id DESC LIMIT $limit OFFSET $offset'
+    'SELECT Item.id, Feed.id feedId, Item.title, Item.url, (SELECT group_concat(json_extract(value,"$.name"),", ") from json_each(authors)) author, contentHtml, ifnull(Item.datePublished, Item.createdAt) publishedAt, createdAt FROM Item LEFT JOIN Feed ON Item.feedId=Feed.id LEFT JOIN Category ON Feed.categoryId=Category.id WHERE ifnull(read=$read,1) AND ifnull(star=$star,1) AND Feed.title IS NOT NULL ORDER BY Item.id DESC LIMIT $limit OFFSET $offset'
 ).as(class {
     declare id: number;
-    declare feed_id: number;
+    declare feedId: number;
     declare title: string | null;
     declare url: string | null;
-    declare private authors: string | null;
-    declare content: string | null;
+    declare author: string | null;
+    declare contentHtml: string | null;
     declare private publishedAt: number;
     declare private createdAt: number;
 
-    get author() {
-        if (this.authors)
-            return (JSON.parse(this.authors) as { name: string; }[])
-                .map(({ name }) => name).join(', ');
-        return null;
-    }
-    get published() {
-        return new Date(this.publishedAt * 1000).toISOString();
-    }
-    get created_at() {
-        return new Date(this.createdAt * 1000).toISOString();
-    }
     toJSON() {
-        const {
-            id,
-            feed_id,
-            title,
-            author,
-            content,
-            url,
-            published,
-            created_at,
-        } = this;
         return {
-            id,
-            feed_id,
-            title,
-            url,
-            author,
+            id: this.id,
+            feed_id: this.feedId,
+            title: this.title,
+            url: this.url,
+            author: this.author,
             summary: null,
-            content,
-            published,
-            created_at,
+            content: this.contentHtml,
+            published: new Date(this.publishedAt * 1000).toISOString(),
+            created_at: new Date(this.createdAt * 1000).toISOString(),
         };
     }
 });
@@ -144,8 +104,7 @@ app.get('/entries.json', zValidator('query', z.object({
         offset: (page - 1) * per_page,
     };
 })), async (c) => {
-    const entries = entriesStmt.all(c.req.valid('query'));
-    return c.json(entries);
+    return c.json(entriesStmt.all(c.req.valid('query')));
 });
 
 export default app;

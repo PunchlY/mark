@@ -2,7 +2,7 @@ import type { MiddlewareHandler, Env, Input, HonoRequest } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import type { z, ZodSchema } from 'zod';
 
-function BodyValidator<T extends ZodSchema, E extends Env, P extends string, I extends Input = {
+function bodyValidator<T extends ZodSchema, E extends Env, P extends string, I extends Input = {
     in: { form?: z.input<T>; };
     out: { form: z.output<T>; };
 },>(schema: T, opt?: Parameters<HonoRequest['parseBody']>[0]): MiddlewareHandler<E, P, I> {
@@ -23,4 +23,4 @@ function BodyValidator<T extends ZodSchema, E extends Env, P extends string, I e
     };
 }
 
-export { BodyValidator };
+export { bodyValidator };

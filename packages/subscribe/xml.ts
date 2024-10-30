@@ -1,6 +1,6 @@
 import { parseXml } from '@rgrove/parse-xml';
 import type { XmlElement } from '@rgrove/parse-xml';
-import { GetElements, GetText } from 'lib/xml';
+import { getElements, getText } from 'lib/xml';
 
 function ATOM(node: XmlElement, base?: string) {
     const feed: {
@@ -16,17 +16,17 @@ function ATOM(node: XmlElement, base?: string) {
             authors?: { name: string; }[];
         }[];
     } = { title: '', items: [] };
-    for (const element of GetElements(node)) {
+    for (const element of getElements(node)) {
         switch (element.name) {
             case 'title':
-                feed.title = GetText(element);
+                feed.title = getText(element);
                 break;
             case 'author':
-                for (const name of GetElements(element)) {
+                for (const name of getElements(element)) {
                     if (name.name !== 'name')
                         continue;
                     feed.authors ??= [];
-                    feed.authors.push({ name: GetText(name) });
+                    feed.authors.push({ name: getText(name) });
                     break;
                 }
                 break;
@@ -38,29 +38,29 @@ function ATOM(node: XmlElement, base?: string) {
             case 'entry':
                 const item: typeof feed.items[number] = {};
                 feed.items.push(item);
-                for (const itemElement of GetElements(element)) {
+                for (const itemElement of getElements(element)) {
                     switch (itemElement.name) {
                         case 'id':
-                            item.id = GetText(itemElement);
+                            item.id = getText(itemElement);
                             break;
                         case 'title':
-                            item.title = GetText(itemElement);
+                            item.title = getText(itemElement);
                             break;
                         case 'summary':
-                            item.content_html ||= GetText(itemElement);
+                            item.content_html ||= getText(itemElement);
                             break;
                         case 'content':
-                            item.content_html = GetText(itemElement);
+                            item.content_html = getText(itemElement);
                             break;
                         case 'published':
-                            item.date_published = new Date(GetText(itemElement));
+                            item.date_published = new Date(getText(itemElement));
                             break;
                         case 'author':
-                            for (const name of GetElements(itemElement)) {
+                            for (const name of getElements(itemElement)) {
                                 if (name.name !== 'name')
                                     continue;
                                 item.authors ??= [];
-                                item.authors.push({ name: GetText(name) });
+                                item.authors.push({ name: getText(name) });
                                 break;
                             }
                             break;
@@ -91,39 +91,39 @@ function RSS2(node: XmlElement, base?: string) {
         }[];
     } = { title: '', items: [] };
     feed.items = [];
-    for (const element of GetElements(node)) {
+    for (const element of getElements(node)) {
         switch (element.name) {
             case 'title':
-                feed.title = GetText(element);
+                feed.title = getText(element);
                 break;
             case 'link':
-                feed.home_page_url = new URL(GetText(element), base).href;
+                feed.home_page_url = new URL(getText(element), base).href;
                 break;
             case 'item':
                 const item: typeof feed.items[number] = {};
                 feed.items.push(item);
-                for (const itemElement of GetElements(element)) {
+                for (const itemElement of getElements(element)) {
                     switch (itemElement.name) {
                         case 'guid':
-                            item.id = GetText(itemElement);
+                            item.id = getText(itemElement);
                             break;
                         case 'title':
-                            item.title = GetText(itemElement);
+                            item.title = getText(itemElement);
                             break;
                         case 'description':
-                            item.content_html ||= GetText(itemElement);
+                            item.content_html ||= getText(itemElement);
                             break;
                         case 'content:encoded':
-                            item.content_html = GetText(itemElement);
+                            item.content_html = getText(itemElement);
                             break;
                         case 'pubDate':
-                            item.date_published = new Date(GetText(itemElement));
+                            item.date_published = new Date(getText(itemElement));
                             break;
                         case 'author':
-                            item.author = { name: GetText(itemElement) };
+                            item.author = { name: getText(itemElement) };
                             break;
                         case 'link':
-                            item.url = new URL(GetText(itemElement), base).href;
+                            item.url = new URL(getText(itemElement), base).href;
                             break;
                     }
                 }
@@ -134,12 +134,12 @@ function RSS2(node: XmlElement, base?: string) {
 }
 
 function XML(xml: string, base?: string) {
-    for (const root of GetElements(parseXml(xml))) {
+    for (const root of getElements(parseXml(xml))) {
         switch (root.name) {
             case 'feed':
                 return ATOM(root, base);
             case 'rss':
-                for (const channel of GetElements(root)) {
+                for (const channel of getElements(root)) {
                     if (channel.name !== 'channel')
                         continue;
                     return RSS2(channel, base);

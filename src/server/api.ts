@@ -3,7 +3,7 @@ import { basicAuth } from 'hono/basic-auth';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { Feed } from 'subscribe/subscribe';
-import { Atom } from 'lib/view';
+import { atom } from 'lib/view';
 
 const app = new Hono<{
     Bindings: {
@@ -22,7 +22,7 @@ app.get('/test', zValidator('query', z.object({
 })), async (c) => {
     const { url, category } = c.req.valid('query');
     const feed = await Feed.test(url, category);
-    return c.html(Atom(feed), 200, { 'Content-Type': 'text/xml; charset=UTF-8' });
+    return c.html(atom(feed), 200, { 'Content-Type': 'text/xml; charset=UTF-8' });
 });
 
 export default app;

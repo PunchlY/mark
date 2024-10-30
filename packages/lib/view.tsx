@@ -15,7 +15,7 @@ type Data = {
     }[];
 };
 
-function Atom({
+function atom({
     title,
     home_page_url,
     items,
@@ -54,4 +54,4 @@ function Atom({
     return html`${declaration}${PIs}${element}`;
 }
 
-export { Atom };
+export { atom };
