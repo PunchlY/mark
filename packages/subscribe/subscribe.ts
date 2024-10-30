@@ -1,3 +1,4 @@
+import { fetch } from 'bun';
 import { z } from 'zod';
 import JSONFeed from './jsonfeed';
 import { backMapConstruct } from 'lib/backmap';
@@ -157,7 +158,7 @@ class Subscribe {
             get res() { return res; },
             set res(value) { res = value; },
             finalized: false,
-        }, JSONFeed);
+        } as Parameters<Job.Fetcher<any[]>>[0], JSONFeed);
         return res;
     }
     async rewrite(item: JSONFeed.Item) {
@@ -166,7 +167,7 @@ class Subscribe {
             get res() { return item; },
             set res(value) { item = value; },
             finalized: false,
-        }, JSONFeed.Item);
+        } as Parameters<Job.Rewriter<any[]>>[0], JSONFeed.Item);
         return item;
     }
     async test() {

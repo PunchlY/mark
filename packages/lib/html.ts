@@ -29,8 +29,11 @@ const SelectHTMLRewriter = /* @__PURE__ */ backMap(new WeakRefMap(), (selector: 
             },
         });
 });
-function selectHTML(selector: string, input: string) {
-    return SelectHTMLRewriter(selector).transform(input).trimStart().replace(/^<!DOCTYPE( .*?)?>/i, '');
+function selectHTML(selector: string, input: Response | Blob | Bun.BufferSource): Response;
+function selectHTML(selector: string, input: string): string;
+function selectHTML(selector: string, input: ArrayBuffer): ArrayBuffer;
+function selectHTML(selector: string, input: any): unknown {
+    return SelectHTMLRewriter(selector).transform(input);
 }
 
 function unescapeHTML(htmlString: string) {

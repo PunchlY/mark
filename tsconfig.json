@@ -1,10 +1,14 @@
 {
+  "exclude": [
+    "./subscribe/*"
+  ],
   "compilerOptions": {
     "target": "ESNext",
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "experimentalDecorators": true,
     "strict": true,
+    "noEmit": true,
     "jsx": "react-jsx",
     "jsxImportSource": "hono/jsx",
     "paths": {

@@ -1,6 +1,10 @@
 {
+  "name": "@types/mark",
   "type": "module",
   "version": "3.1.0",
+  "exports": {
+    "types": "./lib.d.ts"
+  },
   "scripts": {
     "dev": "clear && bun run --hot src/index.ts",
     "start": "clear && NODE_ENV=production bun run src/index.ts"

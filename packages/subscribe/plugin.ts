@@ -1,4 +1,4 @@
-import { escapeHTML } from 'bun';
+import { escapeHTML, fetch } from 'bun';
 import { Factory } from './subscribe';
 import { selectHTML, unescapeHTML } from 'lib/html';
 import { urlReplace } from 'lib/url';
@@ -10,9 +10,10 @@ const htmlRewriter = Factory.rewriter(async (c, next, rewriter: HTMLRewriter) =>
     c.item.content_html &&= rewriter.transform(c.item.content_html);
 });
 
-const scraper = Factory.rewriter(async (c, next, selector: string) => {
-    const res = await fetch(c.item.url!);
-    c.item.content_html = selectHTML(selector, await res.text());
+const scraper = Factory.rewriter(async (c, next, selector: string, init?: FetchRequestInit) => {
+    const res = await fetch(c.item.url!, init);
+    const html = await res.text();
+    c.item.content_html = selectHTML(selector, html.trimStart().replace(/^<!DOCTYPE( .*?)?>/i, ''));
     await next();
 });
 

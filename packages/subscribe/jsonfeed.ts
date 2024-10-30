@@ -1,5 +1,4 @@
-import { MD5 } from 'bun';
-import { serialize } from 'bun:jsc';
+import { MD5, fetch } from 'bun';
 import { XML } from './xml';
 import { z } from 'zod';
 
@@ -18,7 +17,7 @@ const itemSchema = z.object({
 }).transform(({ id, title, url, content_html, date_published, author, authors }) => {
     authors ||= (author && [author]);
     return {
-        id: id ?? url ?? MD5.hash(serialize([title ?? undefined, url ?? undefined, content_html ?? undefined, date_published?.toISOString()]), 'hex'),
+        id: id ?? url ?? MD5.hash(JSON.stringify([title, url, content_html, date_published?.toISOString()]), 'base64'),
         title,
         url,
         content_html,

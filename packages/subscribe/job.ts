@@ -15,6 +15,7 @@ const Category = backMapConstruct(new Map(), class {
     }
 });
 
+const deleteFeedStmt = db.query<null, [url: string]>(`DELETE FROM Feed WHERE url=?`);
 const findFeedStmt = db.query<{ id: number; title: string | null, category: string; }, [url: string]>(`SELECT Feed.id, Feed.title, Category.name category FROM Feed LEFT JOIN Category ON Feed.categoryId=Category.id WHERE url=?`);
 const insertFeedStmt = db.query<{ id: number; }, [url: string, category: number]>(`INSERT INTO Feed (url,categoryId) VALUES (?,?) RETURNING id`);
 const updateFeedCategoryStmt = db.query<null, [categoryId: number, id: number]>(`UPDATE Feed SET categoryId=? WHERE id=?`);
@@ -30,18 +31,30 @@ const readStmt = db.query<null, [feedId: number, s: number]>(`UPDATE Item SET re
 
 class SubscribeJob extends Subscribe {
     static #list = new Map<number, SubscribeJob>();
-    static timer = setInterval(async () => {
+    static interval = 1000 * 60;
+    static #handler = async () => {
         for (const subscribe of this.#list.values()) {
             await subscribe.refresh();
             await subscribe.clean();
         }
-    }, 1000 * 60);
-    static add(opt: Feed.Data) {
+    };
+    static #timer?: Timer;
+    static start() {
+        this.#timer ||= setInterval(this.#handler, this.interval);
+    }
+    static restart() {
+        this.#timer = this.#timer?.refresh() || setInterval(this.#handler, this.interval);
+    }
+    static stop() {
+        clearInterval(this.#timer), this.#timer = undefined;
+    }
+    static async post(opt: Feed.Data) {
         if (opt.unsubscribe) {
             deleteFeedStmt.run(opt.url);
             return;
         }
         const job = new this(opt);
+        await job.refresh();
         this.#list.set(job.id, job);
     }
     id: number;
@@ -56,9 +69,8 @@ class SubscribeJob extends Subscribe {
         } else {
             this.id = insertFeedStmt.get(this.url, category.id)!.id;
         }
-        this.refresh();
     }
-    ids() {
+    #ids() {
         const str = getFeedIdsStmt.get(this.id)?.ids;
         if (!str)
             return;
@@ -78,16 +90,16 @@ class SubscribeJob extends Subscribe {
                 home_page_url,
                 items,
             } = await super.fetch();
-            const ids = this.ids();
+            const ids = this.#ids();
             updateFeedStmt.run(title, home_page_url ?? null, JSON.stringify(items.map(({ id }) => id)), this.id);
             for (const item of ids ? items.filter(({ id }) => !ids.has(id)) : items)
-                await this.insert(item);
+                await this.#insert(item);
             console.debug('[refresh] feedId=%d', this.id);
         } catch (error) {
             console.error('[refresh] feedId=%d error=%s', this.id, error);
         }
     }
-    async insert(item: JSONFeed.Item) {
+    async #insert(item: JSONFeed.Item) {
         const key = item.id, date_published = item.date_published?.toISOString() ?? null;
         try {
             if (findItemStmt.get(key, this.id))
@@ -112,13 +124,13 @@ class SubscribeJob extends Subscribe {
     }
 }
 
-const deleteFeedStmt = db.query<null, [url: string]>(`DELETE FROM Feed WHERE url=?`);
 async function Entry(files: string[]) {
     for (const file of files)
         await import(resolve(process.cwd(), file));
 
     for (const opt of Feed)
-        SubscribeJob.add(opt);
+        await SubscribeJob.post(opt);
+    SubscribeJob.start();
 }
 
 export { Entry };
