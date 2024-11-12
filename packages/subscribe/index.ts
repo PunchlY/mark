@@ -1,4 +1,3 @@
 
-export type { Job, Category, Feed } from './subscribe';
-export { category, subscribe, Factory } from './subscribe';
+export { Subscribe } from './job';
 export { default as JSONFeed } from './jsonfeed';

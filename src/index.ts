@@ -1,40 +1,37 @@
-import { plugin } from 'bun';
-import { Entry } from 'subscribe/job';
+import { plugin, serve, type Server } from 'bun';
+import { Job } from 'subscribe/job';
+import app from './server';
+import staticRouter from './server/static';
 
+plugin({
+    name: 'module',
+    setup(build) {
+        build.module('mark:subscribe', async () => {
+            return {
+                exports: await import('subscribe'),
+                loader: 'object',
+            };
+        });
+    },
+});
 
-if (process.argv.length > 2) {
-    plugin({
-        name: 'module',
-        async setup(build) {
-            build.module('mark:html', async () => {
-                return {
-                    exports: await import('lib/html'),
-                    loader: 'object',
-                };
-            });
-            build.module('mark:url', async () => {
-                return {
-                    exports: await import('lib/url'),
-                    loader: 'object',
-                };
-            });
-            build.module('mark:subscribe', async () => {
-                return {
-                    exports: await import('subscribe'),
-                    loader: 'object',
-                };
-            });
-            build.module('mark:plugin', async () => {
-                return {
-                    exports: await import('subscribe/plugin'),
-                    loader: 'object',
-                };
-            });
-        },
-    });
-    await Entry(process.argv.slice(2));
+const env = {
+    EMAIL: Bun.env.EMAIL ?? 'admin',
+    PASSWORD: Bun.env.PASSWORD ?? 'adminadmin',
+    SUBSCRIBE: await Job.entry(process.argv[2]),
+};
+const server = serve({
+    development: process.env.NODE_ENV !== 'production',
+    // port: Bun.env.PORT,
+    hostname: Bun.env.HOSTNAME,
+    static: staticRouter,
+    fetch: app.fetch,
+});
+
+Object.assign(server, env);
+
+type Env = typeof env & Server;
+
+declare global {
+    interface Bindings extends Env { }
 }
-
-await import('./server/startup');
-
-export { };

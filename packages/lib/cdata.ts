@@ -5,9 +5,8 @@ function encodeCDATA(str: string) {
     return `<![CDATA[${str.replace(']]>', ']]]]><![CDATA[>')}]]>`;
 }
 
-
 function CDATA({ value }: { value: string; }) {
-    return raw(`<![CDATA[${encodeCDATA(value)}]]>`);
+    return raw(encodeCDATA(value));
 }
 
 function escapeCDATA(xml: string) {

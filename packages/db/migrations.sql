@@ -10,6 +10,11 @@ CREATE TABLE IF NOT EXISTS Feed (
     url TEXT NOT NULL UNIQUE CHECK(length(url) > 0),
     ids TEXT CHECK(json_valid(ids)),
     updatedAt INTEGER,
+    errorCount INTEGER NOT NULL DEFAULT(0),
+    refresh INTEGER,
+    markRead INTEGER,
+    clean INTEGER,
+    plugins TEXT CHECK(json_valid(plugins)),
     categoryId INTEGER NOT NULL,
     FOREIGN KEY (categoryId) REFERENCES Category(id) ON UPDATE CASCADE ON DELETE CASCADE
 );
@@ -34,7 +39,8 @@ CREATE TABLE IF NOT EXISTS Item (
 CREATE TRIGGER IF NOT EXISTS FeedStatus
 AFTER
 UPDATE
-    OF ids ON Feed BEGIN
+    OF ids,
+    errorCount ON Feed BEGIN
 UPDATE
     Feed
 SET

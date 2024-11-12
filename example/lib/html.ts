@@ -1,8 +1,8 @@
 import { escapeHTML } from 'bun';
-import { backMap } from './backmap';
+import { bucket } from './bucket';
 import { WeakRefMap } from './weak-ref-collections';
 
-const SelectHTMLRewriter = /* @__PURE__ */ backMap(new WeakRefMap(), (selector: string) => {
+const SelectHTMLRewriter = /* @__PURE__ */ bucket(new WeakRefMap(), (selector: string) => {
     let depth = 0;
     return new HTMLRewriter()
         .onDocument({

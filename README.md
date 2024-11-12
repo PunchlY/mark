@@ -1,11 +1,3 @@
-To install dependencies:
-```sh
-bun install
-```
+# Marker
 
-To run:
-```sh
-bun run dev
-```
-
-open http://localhost:3000
+A self-hosted, anti-social RSS reader.

@@ -1,8 +1,5 @@
 {
   "name": "db",
   "type": "module",
-  "main": "db.ts",
-  "devDependencies": {
-    "@types/bun": "latest"
-  }
+  "main": "db.ts"
 }
