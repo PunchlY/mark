@@ -1,16 +1,15 @@
 
 if (process.env.NODE_ENV !== 'production') {
     // @ts-ignore
-    const intervals: Set<Timer> = globalThis['$intervals'] ??= new Set();
-    for (const timer of intervals)
-        clearInterval(timer);
-    globalThis.setInterval = new Proxy(setInterval, {
+    const intervals: Set<Timer> = globalThis['$intervals'] ??= (globalThis.setInterval = new Proxy(setInterval, {
         apply(target, thisArg, argArray) {
             const timer: Timer = Reflect.apply(target, thisArg, argArray);
             intervals.add(timer);
             return timer;
         },
-    });
+    }), new Set());
+    for (const timer of intervals)
+        clearInterval(timer);
 }
 
 class Interval<T extends any[] = []> {
