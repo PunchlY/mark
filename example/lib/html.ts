@@ -1,4 +1,3 @@
-import { escapeHTML } from 'bun';
 import { bucket } from './bucket';
 import { WeakRefMap } from './weak-ref-collections';
 
@@ -52,4 +51,4 @@ function unescapeHTML(htmlString: string) {
     });
 }
 
-export { selectHTML, unescapeHTML, escapeHTML };
+export { selectHTML, unescapeHTML };

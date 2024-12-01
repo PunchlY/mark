@@ -1,10 +1,8 @@
 // https://github.com/feedbin/feedbin-api
 
-import { Hono, type Context } from 'hono';
-import { basicAuth } from 'hono/basic-auth';
+import { Elysia, t } from 'elysia';
 import db from 'db';
-import { z } from 'zod';
-import { zValidator } from '@hono/zod-validator';
+import basicAuth from './basic';
 
 const subscriptionsStmt = db.query<{
     id: number;
@@ -26,27 +24,23 @@ const updatEntriesReadStmt = db.query<{ id: number; }, [read: boolean, idsJSON: 
 const starredEntriesStmt = db.query<{ id: number; }, []>('SELECT id FROM Item WHERE star=1');
 const updatEntriesStarStmt = db.query<{ id: number; }, [star: boolean, idsJSON: string]>('UPDATE Item SET star=? WHERE id IN (SELECT value from json_each(?)) RETURNING id');
 
-const entriesStmt = db.query<unknown, [{
-    read: boolean | null;
-    star: boolean | null;
-    limit: number;
-    offset: number;
-}]>(
-    'SELECT Item.id, Feed.id feed_id, Item.title, Item.url, (SELECT group_concat(json_extract(value,"$.name"),", ") from json_each(authors)) author, contentHtml content, ifnull(Item.datePublished, Item.createdAt) publishedAt, createdAt FROM Item LEFT JOIN Feed ON Item.feedId=Feed.id LEFT JOIN Category ON Feed.categoryId=Category.id WHERE ifnull(read=$read,1) AND ifnull(star=$star,1) AND Feed.title IS NOT NULL ORDER BY Item.id DESC LIMIT $limit OFFSET $offset'
+const entriesStmt = db.query<unknown, [{ read: boolean | null, star: boolean | null, limit: number, offset: number; }]>(
+    'SELECT Item.id, Feed.id feed_id, Item.title, Item.url, authors, contentHtml content, ifnull(Item.datePublished, Item.createdAt) publishedAt, createdAt FROM Item LEFT JOIN Feed ON Item.feedId=Feed.id LEFT JOIN Category ON Feed.categoryId=Category.id WHERE ifnull(read=$read,1) AND ifnull(star=$star,1) AND Feed.title IS NOT NULL ORDER BY Item.id DESC LIMIT $limit OFFSET $offset'
 ).as(class {
     declare id: number;
     declare feed_id: number;
     declare title: string | null;
     declare url: string | null;
-    declare author: string | null;
+    declare authors: string | null;
     declare content: string | null;
     declare publishedAt: number;
     declare createdAt: number;
 
     toJSON() {
-        const { publishedAt, createdAt, ...data } = this;
+        const { publishedAt, createdAt, authors, ...data } = this;
         return {
             ...data,
+            author: authors ? (JSON.parse(authors) as { name: string; }[]).map(({ name }) => name).join(', ') : null,
             summary: null,
             published: new Date(publishedAt * 1000).toISOString(),
             created_at: new Date(createdAt * 1000).toISOString(),
@@ -54,64 +48,52 @@ const entriesStmt = db.query<unknown, [{
     }
 });
 
-export default new Hono<{ Bindings: Bindings; }>()
-    .basePath('/v2')
-    .use(basicAuth({
-        verifyUser(username, password, c: Context<{ Bindings: Bindings; }>) {
-            return username === c.env.EMAIL && password === c.env.PASSWORD;
-        },
-    }))
-    .get('/authentication.json', async (c) => {
-        return c.body(null, 200, { 'Content-Type': 'application/json' });
-    })
-    .get('/subscriptions.json', async (c) => {
-        return c.json(subscriptionsStmt.all());
-    })
-    .get('/taggings.json', async (c) => {
-        return c.json(taggingsStmt.all());
-    })
-    .get('/unread_entries.json', async (c) => {
-        return c.json(unreadEntriesStmt.all().map(({ id }) => id));
-    })
-    .post('/unread_entries.json', zValidator('json', z.object({
-        unread_entries: z.coerce.number().int().positive().array(),
-    })), async (c) => {
-        const { unread_entries } = c.req.valid('json');
-        return c.json(updatEntriesReadStmt.all(false, JSON.stringify(unread_entries)).map(({ id }) => id));
-    })
-    .delete('/unread_entries.json', zValidator('json', z.object({
-        unread_entries: z.coerce.number().int().positive().array(),
-    })), async (c) => {
-        const { unread_entries } = c.req.valid('json');
-        return c.json(updatEntriesReadStmt.all(true, JSON.stringify(unread_entries)).map(({ id }) => id));
-    })
-    .get('/starred_entries.json', async (c) => {
-        return c.json(starredEntriesStmt.all().map(({ id }) => id));
-    })
-    .post('/starred_entries.json', zValidator('json', z.object({
-        starred_entries: z.coerce.number().int().positive().array(),
-    })), async (c) => {
-        const { starred_entries } = c.req.valid('json');
-        return c.json(updatEntriesStarStmt.all(true, JSON.stringify(starred_entries)).map(({ id }) => id));
-    })
-    .delete('/starred_entries.json', zValidator('json', z.object({
-        starred_entries: z.coerce.number().int().positive().array(),
-    })), async (c) => {
-        const { starred_entries } = c.req.valid('json');
-        return c.json(updatEntriesStarStmt.all(false, JSON.stringify(starred_entries)).map(({ id }) => id));
-    })
-    .get('/entries.json', zValidator('query', z.object({
-        page: z.coerce.number().int().positive().default(1),
-        read: z.enum(['true', 'false']).transform((s) => s === 'true').optional(),
-        starred: z.enum(['true', 'false']).transform((s) => s === 'true').optional(),
-        per_page: z.coerce.number().nonnegative().default(10),
-    }).transform(({ page, read, starred, per_page }) => {
-        return {
-            read: read ?? null,
-            star: starred ?? null,
-            limit: per_page,
-            offset: (page - 1) * per_page,
-        };
-    })), async (c) => {
-        return c.json(entriesStmt.all(c.req.valid('query')));
-    });
+export default new Elysia({ name: 'feedbin', prefix: '/feedbin' })
+    .group('/v2', (app) => app.use(basicAuth)
+        .get('/authentication.json', () => true)
+        .get('/subscriptions.json', () => subscriptionsStmt.all())
+        .get('/taggings.json', () => taggingsStmt.all())
+        .get('/unread_entries.json', () => unreadEntriesStmt.all().map(({ id }) => id))
+        .guard({
+            body: t.Object({
+                unread_entries: t.Array(t.Numeric({ minimum: 1 })),
+            }),
+        }, (app) => app
+            .post('/unread_entries.json', ({ body: { unread_entries } }) => {
+                return updatEntriesReadStmt.all(false, JSON.stringify(unread_entries)).map(({ id }) => id);
+            })
+            .delete('/unread_entries.json', ({ body: { unread_entries } }) => {
+                return updatEntriesReadStmt.all(true, JSON.stringify(unread_entries)).map(({ id }) => id);
+            })
+        )
+        .get('/starred_entries.json', () => {
+            return starredEntriesStmt.all().map(({ id }) => id);
+        })
+        .guard({
+            body: t.Object({
+                starred_entries: t.Array(t.Numeric({ minimum: 1 })),
+            }),
+        }, (app) => app
+            .post('/starred_entries.json', ({ body: { starred_entries } }) => {
+                return updatEntriesStarStmt.all(true, JSON.stringify(starred_entries)).map(({ id }) => id);
+            })
+            .delete('/starred_entries.json', ({ body: { starred_entries } }) => {
+                return updatEntriesStarStmt.all(false, JSON.stringify(starred_entries)).map(({ id }) => id);
+            })
+        )
+        .get('/entries.json', ({ query: { page, read, starred, per_page } }) => {
+            return entriesStmt.all({
+                read: read ?? null,
+                star: starred ?? null,
+                limit: per_page,
+                offset: (page - 1) * per_page,
+            });
+        }, {
+            query: t.Object({
+                page: t.Numeric({ minimum: 1, default: 1 }),
+                read: t.Optional(t.BooleanString()),
+                starred: t.Optional(t.BooleanString()),
+                per_page: t.Numeric({ minimum: 1, default: 10 }),
+            }),
+        })
+    );

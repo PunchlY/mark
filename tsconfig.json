@@ -1,7 +1,4 @@
 {
-  "exclude": [
-    "./subscribe/*"
-  ],
   "compilerOptions": {
     "target": "ESNext",
     "module": "ESNext",
@@ -10,14 +7,16 @@
     "strict": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    "jsxImportSource": "hono/jsx",
     "paths": {
       "package.json": [
-        "./package.json"
+        "./package.json",
       ],
       "@rgrove/parse-xml": [
-        "./node_modules/@rgrove/parse-xml/src/index.ts"
-      ]
-    }
-  }
+        "./node_modules/@rgrove/parse-xml/src/index.ts",
+      ],
+      "@elysiajs/jwt": [
+        "./node_modules/@elysiajs/jwt/src/index.ts",
+      ],
+    },
+  },
 }

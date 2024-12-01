@@ -1,36 +1,26 @@
 // https://github.com/theoldreader/api
 // https://github.com/FreshRSS/FreshRSS/blob/edge/p/api/greader.php
 
-import { Hono } from 'hono';
-import { getCookie } from 'hono/cookie';
-import { sign, verify } from 'hono/jwt';
-import { HTTPException } from 'hono/http-exception';
-import { zValidator } from '@hono/zod-validator';
-import { z } from 'zod';
+import { Elysia, InvertedStatusMap, t } from 'elysia';
+import { jwt } from '@elysiajs/jwt';
 import db from 'db';
-import { bodyValidator } from 'lib/validator';
+import { User } from 'db/user';
 
-const secret = `${Date()} ${Math.random()}`;
 
-const loginSchema = z.object({
-    Email: z.string().optional(),
-    Passwd: z.string().optional(),
-});
+const idSchema = t.Transform(t.TemplateLiteral([t.Literal('tag:google.com,2005:reader/item/'), t.Numeric({ multipleOf: 16 })]))
+    .Decode((s) => parseInt(s.substring(32), 16))
+    .Encode((id) => `tag:google.com,2005:reader/item/${id.toString(16) as any}`);
 
 const tagsStmt = db.query<{ label: string; }, []>('SELECT name label FROM Category');
-const subscriptionsStmt = db.query<{
-    id: number;
-    title: string;
-    url: string;
-    htmlUrl: string;
-    label: string;
-}, []>('SELECT Feed.id, title, url, homePage htmlUrl, name label FROM Feed LEFT JOIN Category ON Feed.categoryId=Category.id WHERE title IS NOT NULL');
+const subscriptionsStmt = db.query<{ id: number, title: string, url: string, htmlUrl: string, label: string; }, []>(
+    'SELECT Feed.id, title, url, homePage htmlUrl, name label FROM Feed LEFT JOIN Category ON Feed.categoryId=Category.id WHERE title IS NOT NULL'
+);
 
 class Item {
     declare id: number;
     declare title: string | null;
     declare url: string | null;
-    declare author: string | null;
+    declare authors: string | null;
     declare contentHtml: string | null;
     declare publishedAt: number;
     declare createdAt: number;
@@ -41,11 +31,11 @@ class Item {
     declare category: string;
     declare homePage: string | null;
 
+    get author() {
+        return this.authors ? (JSON.parse(this.authors) as { name: string; }[]).map(({ name }) => name).join(', ') : null;
+    }
     toJSON() {
-        const categories = [
-            'user/-/state/com.google/reading-list',
-            `user/-/label/${this.category}`,
-        ];
+        const categories = ['user/-/state/com.google/reading-list', `user/-/label/${this.category}`];
         if (this.star)
             categories.push('user/-/state/com.google/starred');
         if (this.read)
@@ -58,15 +48,9 @@ class Item {
             timestampUsec: `${this.publishedAt}000000`,
             published: this.publishedAt,
             author: this.author,
-            alternate: [{
-                href: this.url,
-            }],
-            summary: {
-                content: this.contentHtml,
-            },
-            content: {
-                content: this.contentHtml,
-            },
+            alternate: [{ href: this.url }],
+            summary: { content: this.contentHtml },
+            content: { content: this.contentHtml },
             origin: {
                 streamId: `feed/${this.feedId.toString(16).padStart(16, '0')}`,
                 title: this.feedTitle,
@@ -77,199 +61,236 @@ class Item {
     }
 }
 
-const streamSchema = z.object({
-    n: z.coerce.number().nonnegative().default(10),
-    s: z.string().transform((s) => {
-        if (s === 'user/-/state/com.google/reading-list')
-            return;
-        if (s === 'user/-/state/com.google/read')
-            return { read: true };
-        if (s === 'user/-/state/com.google/starred')
-            return { star: true };
-        if (s.startsWith('user/-/label/'))
-            return { category: s.substring(13) };
-        if (s.startsWith('feed/')) {
-            const id = parseInt(s.substring(5), 16);
-            if (id > 0)
-                return { feedId: id };
-        }
-        throw new Error(`unknown stream type: ${s}`);
-    }).optional(),
-    xt: z.enum(['user/-/state/com.google/read']).transform(() => {
-        return { read: false };
-    }).optional(),
-    r: z.string().optional(),
-    c: z.coerce.number().nonnegative().optional(),
-    nt: z.coerce.number().nonnegative().optional(),
-    ot: z.coerce.number().nonnegative().optional(),
-}).transform(({ n, s, xt, nt, ot, r, c }) => {
-    return {
-        n,
-        read: s?.read ?? null,
-        star: s?.star ?? null,
-        category: s?.category ?? null,
-        feedId: s?.feedId ?? null,
-        ...xt,
-        nt: nt ?? null,
-        ot: ot ?? null,
-        r: r === 'o',
-        c: c ?? null,
-    };
-});
-
 const streamSuery = <T>(column: string) => {
-    return db.query<T, z.infer<typeof streamSchema>>(`SELECT ${column} FROM (SELECT Item.id, Item.url, Item.title, Item.authors, Item.contentHtml, ifnull(Item.datePublished, Item.createdAt) publishedAt, Item.createdAt, Item.read, Item.star, Feed.id feedId, Feed.title feedTitle, Feed.url feedUrl, Feed.homePage, Category.id categoryId, Category.name category FROM Item LEFT JOIN Feed ON Item.feedId = Feed.id LEFT JOIN Category ON Feed.categoryId = Category.id WHERE Feed.title IS NOT NULL AND ifnull(read=$read,1) AND ifnull(star=$star,1) AND ifnull(category=$category,1) AND ifnull(feedId=$feedId,1) AND ifnull(publishedAt<=$nt,1) AND ifnull(publishedAt>=$ot,1) AND ifnull(iif($r,Item.id>=$c,Item.id<=$c),1) ORDER BY iif($r,Item.id,null) ASC, iif($r,null,Item.id) DESC LIMIT $n+1)`);
+    return db.query<T, {
+        n: number;
+        read: boolean | null;
+        star: boolean | null;
+        category: string | null;
+        feedId: number | null;
+        nt: number | null;
+        ot: number | null;
+        r: boolean;
+        c: number | null;
+    }>(`SELECT ${column} FROM (SELECT Item.id, Item.url, Item.title, Item.authors, Item.contentHtml, ifnull(Item.datePublished, Item.createdAt) publishedAt, Item.createdAt, Item.read, Item.star, Feed.id feedId, Feed.title feedTitle, Feed.url feedUrl, Feed.homePage, Category.id categoryId, Category.name category FROM Item LEFT JOIN Feed ON Item.feedId = Feed.id LEFT JOIN Category ON Feed.categoryId = Category.id WHERE Feed.title IS NOT NULL AND ifnull(read=$read,1) AND ifnull(star=$star,1) AND ifnull(category=$category,1) AND ifnull(feedId=$feedId,1) AND ifnull(publishedAt<=$nt,1) AND ifnull(publishedAt>=$ot,1) AND ifnull(iif($r,Item.id>=$c,Item.id<=$c),1) ORDER BY iif($r,Item.id,null) ASC, iif($r,null,Item.id) DESC LIMIT $n+1)`);
 };
 
 const idsStmt = streamSuery<{ id: number; }>('id');
 
-const contentsStmt = streamSuery('id, url, title, (SELECT group_concat(json_extract(value,"$.name"),", ") from json_each(authors)) author, contentHtml, publishedAt, createdAt, read, star, feedId, feedTitle, homePage, category').as(Item);
+const contentsStmt = streamSuery('id, url, title, authors, contentHtml, publishedAt, createdAt, read, star, feedId, feedTitle, homePage, category').as(Item);
 
-
-const idSchema = z.string().startsWith('tag:google.com,2005:reader/item/').transform((s) => parseInt(s.substring(32), 16)).pipe(z.number()).or(z.coerce.number());
-const idsSchema = idSchema.array().or(idSchema.transform((i) => [i]));
-
-const itemsContentsStmt = db.query<unknown, [idsJSON: string]>(`SELECT Item.id, Item.url, Item.title, (SELECT group_concat(json_extract(value,"$.name"),", ") from json_each(authors)) author, Item.contentHtml, ifnull(Item.datePublished, Item.createdAt) publishedAt, Item.createdAt, Item.read, Item.star, Feed.id feedId, Feed.title feedTitle, Feed.url feedUrl, Feed.homePage, Category.id categoryId, Category.name category FROM Item LEFT JOIN Feed ON Item.feedId=Feed.id LEFT JOIN Category ON Feed.categoryId=Category.id WHERE Feed.title IS NOT NULL AND Item.id IN (SELECT value from json_each(?))`).as(Item);
+const itemsContentsStmt = db.query<unknown, [idsJSON: string]>(`SELECT Item.id, Item.url, Item.title, authors, Item.contentHtml, ifnull(Item.datePublished, Item.createdAt) publishedAt, Item.createdAt, Item.read, Item.star, Feed.id feedId, Feed.title feedTitle, Feed.url feedUrl, Feed.homePage, Category.id categoryId, Category.name category FROM Item LEFT JOIN Feed ON Item.feedId=Feed.id LEFT JOIN Category ON Feed.categoryId=Category.id WHERE Feed.title IS NOT NULL AND Item.id IN (SELECT value from json_each(?))`).as(Item);
 
 const editTagStmt = db.query<null, [read: boolean | null, star: boolean | null, idsJSON: string]>(`UPDATE Item SET read=ifnull(?,read),star=ifnull(?,star) WHERE id IN (SELECT value from json_each(?))`);
 
-export default new Hono<{
-    Bindings: Bindings;
-    Variables: {
-        token: string;
-    };
-}>()
-    .post('/accounts/ClientLogin', async (c) => {
-        const { Email, Passwd } = loginSchema.parse({
-            ...c.req.query(),
-            ...await c.req.parseBody(),
-            ...getCookie(c),
-        });
-        if (Email !== c.env.EMAIL || Passwd !== c.env.PASSWORD)
-            return c.text('Unauthorized', 401);
-        const token = await sign({
-            Email,
-            exp: (new Date().getTime() / 1000 | 0) + 60 * 60 * 3,
-        }, secret);
-        return c.text(`SID=${token}\nLSID=none\nAuth=${token}`);
-    })
-    .basePath('/reader/api/0')
-    .use(async (c, next) => {
-        const credentials = c.req.header('Authorization');
-        if (credentials && credentials.startsWith('GoogleLogin auth=')) try {
-            const token = credentials.substring(17);
-            const { Email } = await verify(token, secret);
-            if (Email === c.env.EMAIL) {
-                c.set('token', token);
-                return await next();
+class AuthError extends Error { }
+
+export default new Elysia({ name: 'greader', prefix: '/greader' })
+    .error({ AUTH_ERROR: AuthError })
+    .use(jwt({
+        secret: `${Date()} ${Math.random()}`,
+        exp: '3h',
+        schema: t.Object({ Email: t.String() }),
+    }))
+    .post('/accounts/ClientLogin', async ({ jwt, body: { Email, Passwd }, error }) => {
+        if (!await User.verify(Email, Passwd))
+            return error(401);
+        const token = await jwt.sign({ Email });
+        return `SID=${token}\nLSID=none\nAuth=${token}`;
+    }, { body: t.Object({ Email: t.String(), Passwd: t.String() }) })
+    .state('token', null as null | string)
+    .state('username', null as null | string)
+    .group('/reader/api/0', {
+        async transform({ jwt, store, request: { method, headers } }) {
+            if (process.env.NODE_ENV !== 'production')
+                return;
+            if (method === 'OPTIONS')
+                return;
+            const auth = headers.get('Authorization');
+            if (auth && auth.startsWith('GoogleLogin auth=')) {
+                const token = auth.substring(17);
+                const res = await jwt.verify(token);
+                if (res && await User.has(res.Email)) {
+                    store.token = token;
+                    store.username = res.Email;
+                    return;
+                }
             }
-        } catch { }
-        throw new HTTPException(401);
-    })
-    .get('/user-info', async (c) => {
-        return c.json({
-            userId: '1',
-            userName: c.env.EMAIL,
-            userProfileId: '1',
-            userEmail: c.env.EMAIL,
-        });
-    })
-    .get('/token', async (c) => {
-        return c.text(c.var.token);
-    })
-    .get('/tag/list', async (c) => {
-        const tags = tagsStmt.all();
-        return c.json({
-            tags: [
-                { id: 'user/-/state/com.google/starred' },
-                ...tags.map(({ label }) => {
-                    return {
-                        id: `user/-/label/${label}`,
-                        label,
-                        type: 'folder',
-                    };
-                }),
-            ],
-        });
-    })
-    .get('/subscription/list', async (c) => {
-        const subscriptions = subscriptionsStmt.all();
-        return c.json({
-            subscriptions: subscriptions.map(({
-                id,
-                title,
-                url,
-                htmlUrl,
-                label,
-            }) => {
-                return {
-                    id: `feed/${id.toString(16).padStart(16, '0')}`,
+            throw new AuthError();
+        },
+        error({ code, set }) {
+            if (code === 'AUTH_ERROR') {
+                set.status = 401;
+                return InvertedStatusMap[401];
+            }
+        },
+    }, (app) => app
+        .get('/user-info', ({ store: { username } }) => {
+            return {
+                userId: '1',
+                userName: username!,
+                userProfileId: '1',
+                userEmail: username!,
+            };
+        })
+        .get('/token', ({ store: { token } }) => token!)
+        .get('/tag/list', () => {
+            const tags = tagsStmt.all();
+            return {
+                tags: [
+                    { id: 'user/-/state/com.google/starred' },
+                    ...tags.map(({ label }) => {
+                        return {
+                            id: `user/-/label/${label}`,
+                            label,
+                            type: 'folder',
+                        };
+                    }),
+                ],
+            };
+        })
+        .get('/subscription/list', () => {
+            const subscriptions = subscriptionsStmt.all();
+            return {
+                subscriptions: subscriptions.map(({
+                    id,
                     title,
-                    categories: [{
-                        id: `user/-/label/${label}`,
-                        label,
-                        type: 'folder',
-                    }],
                     url,
                     htmlUrl,
+                    label,
+                }) => {
+                    return {
+                        id: `feed/${id.toString(16).padStart(16, '0')}`,
+                        title,
+                        categories: [{
+                            id: `user/-/label/${label}`,
+                            label,
+                            type: 'folder',
+                        }],
+                        url,
+                        htmlUrl,
+                    };
+                }),
+            };
+        })
+        .guard({
+            query: t.Object({
+                n: t.Numeric({ minimum: 0, default: 10 }),
+                s: t.Optional(t.Union([
+                    t.Transform(t.Literal('user/-/state/com.google/reading-list'))
+                        .Decode(() => undefined)
+                        .Encode(() => 'user/-/state/com.google/reading-list'),
+                    t.Transform(t.Literal('user/-/state/com.google/read'))
+                        .Decode(() => ({ read: true }))
+                        .Encode(() => 'user/-/state/com.google/read'),
+                    t.Transform(t.Literal('user/-/state/com.google/starred'))
+                        .Decode(() => ({ star: true }))
+                        .Encode(() => 'user/-/state/com.google/starred'),
+                    t.Transform(t.String({ pattern: '^user\\/-\\/label\\/(?:.+)$' }))
+                        .Decode((s) => ({ category: s.substring(13) }))
+                        .Encode(({ category }) => `user/-/label/${category}`),
+                    t.Transform(t.String({ pattern: '^feed\\/(?:[0-9a-fA-F]+)$' }))
+                        .Decode((s) => ({ feedId: parseInt(s.substring(5), 16) }))
+                        .Encode(({ feedId }) => `feed/${feedId}`),
+                    t.Undefined(),
+                ])),
+                xt: t.Optional(t.Union([
+                    t.Transform(t.Literal('user/-/state/com.google/read'))
+                        .Decode(() => ({ read: false }))
+                        .Encode(() => 'user/-/state/com.google/read'),
+                    t.Undefined(),
+                ])),
+                r: t.Optional(t.Literal('o')),
+                c: t.Optional(t.Numeric({ minimum: 0 })),
+                nt: t.Optional(t.Numeric({ minimum: 0 })),
+                ot: t.Optional(t.Numeric({ minimum: 0 })),
+            }),
+        }, (app) => app
+            .get('/stream/items/ids', ({ query: { n, s, xt, nt, ot, r, c } }) => {
+                const itemRefs = idsStmt.all({
+                    n,
+                    read: s && 'read' in s ? s.read : null,
+                    star: s && 'star' in s ? s.star : null,
+                    category: s && 'category' in s ? s.category : null,
+                    feedId: s && 'feedId' in s ? s.feedId : null,
+                    ...xt,
+                    nt: nt ?? null,
+                    ot: ot ?? null,
+                    r: r === 'o',
+                    c: c ?? null,
+                });
+                const data: {
+                    itemRefs: { id: string; }[];
+                    continuation?: string;
+                } = {
+                    itemRefs: itemRefs.map(({ id }) => {
+                        return { id: String(id) };
+                    }),
                 };
+                if (itemRefs.length > n) {
+                    data.continuation = String(itemRefs[n].id);
+                    itemRefs.length = n;
+                }
+                return data;
+            })
+            .get('/stream/contents', ({ query: { n, s, xt, nt, ot, r, c } }) => {
+                const items = contentsStmt.all({
+                    n,
+                    read: s && 'read' in s ? s.read : null,
+                    star: s && 'star' in s ? s.star : null,
+                    category: s && 'category' in s ? s.category : null,
+                    feedId: s && 'feedId' in s ? s.feedId : null,
+                    ...xt,
+                    nt: nt ?? null,
+                    ot: ot ?? null,
+                    r: r === 'o',
+                    c: c ?? null,
+                });
+                return {
+                    id: 'user/-/state/com.google/reading-list',
+                    updated: new Date().getTime() / 1000 | 0,
+                    items,
+                    continuation: items.length > n ? items.pop()!.id : undefined,
+                };
+            })
+        )
+        .post('/stream/items/contents', ({ body: { i } }) => {
+            const items = itemsContentsStmt.all(JSON.stringify(i));
+            return {
+                id: 'user/-/state/com.google/reading-list',
+                updated: new Date().getTime() / 1000 | 0,
+                items,
+            };
+        }, {
+            body: t.Object({
+                i: t.Union([t.Array(idSchema), idSchema, t.Array(t.Numeric()), t.Numeric()]),
             }),
-        });
-    })
-    .get('/stream/items/ids', zValidator('query', streamSchema), async (c) => {
-        const param = c.req.valid('query'), { n } = param;
-        const itemRefs = idsStmt.all(param);
-        const data: {
-            itemRefs: { id: string; }[];
-            continuation?: string;
-        } = {
-            itemRefs: itemRefs.map(({ id }) => {
-                return { id: String(id) };
+        })
+        .post('/edit-tag', ({ body: { i, a, r }, set }) => {
+            const { read, star } = { ...a, ...r } as { read?: boolean, star?: boolean; };
+            editTagStmt.run(read ?? null, star ?? null, JSON.stringify(i));
+            set.status = 204;
+        }, {
+            body: t.Object({
+                i: t.Union([t.Array(idSchema), idSchema, t.Array(t.Numeric()), t.Numeric()]),
+                a: t.Optional(t.Union([
+                    t.Transform(t.Literal('user/-/state/com.google/read'))
+                        .Decode(() => ({ read: true }))
+                        .Encode(() => 'user/-/state/com.google/read'),
+                    t.Transform(t.Literal('user/-/state/com.google/starred'))
+                        .Decode(() => ({ star: true }))
+                        .Encode(() => 'user/-/state/com.google/starred'),
+                    t.Undefined(),
+                ])),
+                r: t.Optional(t.Union([
+                    t.Transform(t.Literal('user/-/state/com.google/read'))
+                        .Decode(() => ({ read: false }))
+                        .Encode(() => 'user/-/state/com.google/read'),
+                    t.Transform(t.Literal('user/-/state/com.google/starred'))
+                        .Decode(() => ({ star: false }))
+                        .Encode(() => 'user/-/state/com.google/starred'),
+                    t.Undefined(),
+                ])),
             }),
-        };
-        if (itemRefs.length > n) {
-            data.continuation = String(itemRefs[n].id);
-            itemRefs.length = n;
-        }
-        return c.json(data);
-    })
-    .get('/stream/contents', zValidator('query', streamSchema), async (c) => {
-        const param = c.req.valid('query'), { n } = param;
-        const items = contentsStmt.all(param);
-        return c.json({
-            id: 'user/-/state/com.google/reading-list',
-            updated: new Date().getTime() / 1000 | 0,
-            items,
-            continuation: items.length > n ? items.pop()!.id : undefined,
-        });
-    })
-    .post('/stream/items/contents', bodyValidator(z.object({ i: idsSchema, }), { all: true }), async (c) => {
-        const { i } = c.req.valid('form');
-        const items = itemsContentsStmt.all(JSON.stringify(i));
-        return c.json({
-            id: 'user/-/state/com.google/reading-list',
-            updated: new Date().getTime() / 1000 | 0,
-            items,
-        });
-    })
-    .post('/edit-tag', bodyValidator(z.object({
-        i: idsSchema,
-        a: z.string().transform((a) => {
-            if (a === 'user/-/state/com.google/read')
-                return { read: true };
-            if (a === 'user/-/state/com.google/starred')
-                return { star: true };
-        }).optional(),
-        r: z.string().transform((r) => {
-            if (r === 'user/-/state/com.google/read')
-                return { read: false };
-            if (r === 'user/-/state/com.google/starred')
-                return { star: false };
-        }).optional(),
-    }).transform(({ i, a, r }) => {
-        return { i, read: a?.read ?? r?.read ?? null, star: a?.star ?? r?.star ?? null };
-    }), { all: true }), async (c) => {
-        const { i, read, star } = c.req.valid('form');
-        editTagStmt.run(read, star, JSON.stringify(i));
-        return c.body(null, 204);
-    });
+        })
+    );

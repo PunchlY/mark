@@ -2,7 +2,7 @@ import { parseXml } from '@rgrove/parse-xml';
 import type { XmlElement } from '@rgrove/parse-xml';
 import { getElements, getText } from 'lib/xml';
 
-function ATOM(node: XmlElement, base?: string) {
+function ATOM(node: XmlElement) {
     const feed: {
         title: string;
         authors?: { name: string; }[];
@@ -12,7 +12,7 @@ function ATOM(node: XmlElement, base?: string) {
             url?: string;
             title?: string;
             content_html?: string;
-            date_published?: Date;
+            date_published?: string;
             authors?: { name: string; }[];
         }[];
     } = { title: '', items: [] };
@@ -33,7 +33,7 @@ function ATOM(node: XmlElement, base?: string) {
             case 'link':
                 const { rel, href } = element.attributes;
                 if (rel === undefined || rel === 'alternate')
-                    feed.home_page_url = new URL(href, base).href;
+                    feed.home_page_url = href;
                 break;
             case 'entry':
                 const item: typeof feed.items[number] = {};
@@ -53,7 +53,7 @@ function ATOM(node: XmlElement, base?: string) {
                             item.content_html = getText(itemElement);
                             break;
                         case 'published':
-                            item.date_published = new Date(getText(itemElement));
+                            item.date_published = getText(itemElement);
                             break;
                         case 'author':
                             for (const name of getElements(itemElement)) {
@@ -67,7 +67,7 @@ function ATOM(node: XmlElement, base?: string) {
                         case 'link':
                             const { rel, href } = itemElement.attributes;
                             if (rel === undefined || rel === 'alternate')
-                                item.url = new URL(href, base).href;
+                                item.url = href;
                             break;
                     }
                 }
@@ -77,7 +77,7 @@ function ATOM(node: XmlElement, base?: string) {
     return feed;
 }
 
-function RSS2(node: XmlElement, base?: string) {
+function RSS2(node: XmlElement) {
     const feed: {
         title: string;
         home_page_url?: string;
@@ -86,7 +86,7 @@ function RSS2(node: XmlElement, base?: string) {
             url?: string;
             title?: string;
             content_html?: string;
-            date_published?: Date;
+            date_published?: string;
             author?: { name: string; };
         }[];
     } = { title: '', items: [] };
@@ -97,7 +97,7 @@ function RSS2(node: XmlElement, base?: string) {
                 feed.title = getText(element);
                 break;
             case 'link':
-                feed.home_page_url = new URL(getText(element), base).href;
+                feed.home_page_url = getText(element);
                 break;
             case 'item':
                 const item: typeof feed.items[number] = {};
@@ -117,13 +117,13 @@ function RSS2(node: XmlElement, base?: string) {
                             item.content_html = getText(itemElement);
                             break;
                         case 'pubDate':
-                            item.date_published = new Date(getText(itemElement));
+                            item.date_published = getText(itemElement);
                             break;
                         case 'author':
                             item.author = { name: getText(itemElement) };
                             break;
                         case 'link':
-                            item.url = new URL(getText(itemElement), base).href;
+                            item.url = getText(itemElement);
                             break;
                     }
                 }
@@ -133,16 +133,16 @@ function RSS2(node: XmlElement, base?: string) {
     return feed;
 }
 
-function XML(xml: string, base?: string) {
+function XML(xml: string) {
     for (const root of getElements(parseXml(xml))) {
         switch (root.name) {
             case 'feed':
-                return ATOM(root, base);
+                return ATOM(root);
             case 'rss':
                 for (const channel of getElements(root)) {
                     if (channel.name !== 'channel')
                         continue;
-                    return RSS2(channel, base);
+                    return RSS2(channel);
                 }
                 break;
         }

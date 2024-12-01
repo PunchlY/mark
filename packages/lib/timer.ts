@@ -20,16 +20,8 @@ class Interval<T extends any[] = []> {
     constructor(...handler: Parameters<typeof setInterval>) {
         this.#handler = handler;
     }
-    get interval() {
-        return this.#handler[1];
-    }
-    set interval(ms) {
-        clearInterval(this.#timer);
-        this.#handler[1] = ms;
-        this.#timer &&= setInterval.apply(undefined, this.#handler);
-    }
     get isRun() {
-        return this.#timer !== undefined;
+        return typeof this.#timer !== 'undefined';
     }
     start() {
         this.#timer ||= setInterval.apply(undefined, this.#handler);
@@ -40,6 +32,7 @@ class Interval<T extends any[] = []> {
     stop() {
         clearInterval(this.#timer), this.#timer = undefined;
     }
+
 }
 
 export { Interval };

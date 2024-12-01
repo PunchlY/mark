@@ -5,11 +5,12 @@ interface PromiseConstructor {
 }
 
 declare module "bun:sqlite" {
-    export interface Database {
+    interface Database {
         transaction<T extends (...args: any) => any>(insideTransaction: T): T & {
             deferred: T;
             immediate: T;
             exclusive: T;
         };
     }
+
 }

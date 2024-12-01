@@ -1,54 +1,65 @@
-import { MD5, fetch } from 'bun';
 import { XML } from './xml';
-import { z } from 'zod';
+import { Type, type StaticDecode, type Static } from '@sinclair/typebox';
+import { Value } from '@sinclair/typebox/value';
 
-const authorSchema = z.object({
-    name: z.coerce.string(),
+const authorSchema = Type.Object({
+    name: Type.String(),
 });
 
-const itemSchema = z.object({
-    id: z.string().min(1).or(z.number().transform(String)).nullish(),
-    url: z.string().url().nullish(),
-    title: z.string().nullish(),
-    content_html: z.string().nullish(),
-    date_published: z.coerce.date().nullish() as unknown as z.ZodOptional<z.ZodNullable<z.ZodEffects<z.ZodNumber, Date, string | number | Date>>>,
-    author: authorSchema.nullish(),
-    authors: authorSchema.array().nullish(),
-}).transform(({ id, title, url, content_html, date_published, author, authors }) => {
-    authors ||= (author && [author]);
-    return {
-        id: id ?? url ?? MD5.hash(JSON.stringify([title, url, content_html, date_published?.toISOString()]), 'base64'),
-        title,
-        url,
-        content_html,
-        date_published,
-        authors,
-    };
-});
+const itemSchema = Type.Transform(Type.Object({
+    id: Type.Optional(Type.Union([Type.String({ minLength: 1 }), Type.Transform(Type.Number()).Decode(String).Encode(Number), Type.Null()])),
+    url: Type.Optional(Type.Union([Type.String({ format: 'url' }), Type.Null()])),
+    title: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+    content_html: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+    date_published: Type.Optional(Type.Union([
+        Type.Date(),
+        Type.Transform(Type.Union([Type.String(), Type.Number()]))
+            .Decode((value) => {
+                const date = new Date(value);
+                if (isNaN(date.valueOf()))
+                    throw new RangeError('Invalid time value');
+                return date;
+            })
+            .Encode((date) => date.toISOString()),
+        Type.Null(),
+    ])),
+    author: Type.Optional(Type.Union([authorSchema, Type.Null()])),
+    authors: Type.Optional(Type.Union([Type.Array(authorSchema), Type.Null()])),
+}))
+    .Decode(({ id, title, url, content_html, date_published, author, authors }) => {
+        authors ||= (author && [author]);
+        id ??= url ?? Bun.MD5.hash(JSON.stringify([title, url, content_html, date_published?.toISOString()]), 'base64');
+        return { id, title, url, content_html, date_published, authors };
+    })
+    .Encode((value) => value);
 
-const feedSchema = z.object({
-    title: z.string().min(1),
-    home_page_url: z.string().url().nullish(),
-    author: authorSchema.nullish(),
-    authors: authorSchema.array().nullish(),
-    items: itemSchema.array(),
-}).transform(({ author, authors, items, ...data }) => {
-    authors ||= (author && [author]);
-    return {
-        ...data,
-        items: items.map((item) => {
-            item.authors ||= authors;
-            // item.url &&= new URL(item.url, data.home_page_url ?? undefined).href;
-            return item;
-        }),
-    };
-});
+const feedSchema = Type.Transform(Type.Object({
+    title: Type.String({ minLength: 1 }),
+    feed_url: Type.Optional(Type.Union([Type.String({ format: 'url' }), Type.Null()])),
+    home_page_url: Type.Optional(Type.Union([Type.String({ format: 'url' }), Type.Null()])),
+    author: Type.Optional(Type.Union([authorSchema, Type.Null()])),
+    authors: Type.Optional(Type.Union([Type.Array(authorSchema), Type.Null()])),
+    items: Type.Array(itemSchema),
+}))
+    .Decode(({ author, authors, items, ...data }) => {
+        authors ||= (author && [author]);
+        return {
+            ...data,
+            items: items.map((item) => {
+                item.authors ||= authors;
+                item.url &&= new URL(item.url, data.home_page_url ?? undefined).href;
+                return item;
+            }),
+        };
+    })
+    .Encode((value) => value);
 
-async function JSONFeed(data?: JSONFeed.$Input, base?: string): Promise<JSONFeed> {
+function JSONFeed(data: JSONFeed.$Input): Promise<JSONFeed>;
+function JSONFeed(data: unknown): Promise<JSONFeed>;
+async function JSONFeed(data: any): Promise<JSONFeed> {
     if (data instanceof Request)
-        data = await fetch(data);
+        data = await Bun.fetch(data);
     if (data instanceof Response) {
-        base = data.url || base;
         if (data.status !== 200)
             throw new Error(`${data.url} ${data.status}`);
         data = await data.text();
@@ -56,22 +67,22 @@ async function JSONFeed(data?: JSONFeed.$Input, base?: string): Promise<JSONFeed
     if (typeof data === 'string') {
         data = data.trimStart();
         if (data.startsWith('<'))
-            data = XML(data.trimStart(), base);
+            data = XML(data.trimStart());
         else
             data = JSON.parse(data);
     }
-    return feedSchema.parse(data);
+    return Value.Decode(feedSchema, data);
 }
-interface JSONFeed extends z.infer<typeof feedSchema> { }
+type JSONFeed = StaticDecode<typeof feedSchema>;
 namespace JSONFeed {
-    export type $Input = Request | Response | string | z.input<typeof feedSchema>;
+    export type $Input = Request | Response | string | Static<typeof feedSchema>;
 
-    export function Item(item: z.input<typeof itemSchema>): Item {
-        return itemSchema.parse(item);
+    export function Item(item: Static<typeof itemSchema>): Item {
+        return Value.Decode(itemSchema, item);
     }
-    export interface Item extends z.infer<typeof itemSchema> { }
+    export type Item = StaticDecode<typeof itemSchema>;
     export namespace Item {
-        export type $Input = z.input<typeof itemSchema>;
+        export type $Input = Static<typeof itemSchema>;
     }
 }
 

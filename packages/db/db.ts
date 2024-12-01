@@ -12,10 +12,13 @@ function getDatabase(filename: string) {
     return db;
 }
 
+declare global {
+    var $sqlite: Database | undefined;
+}
+
 const db: Database = process.env.NODE_ENV === 'production' ?
     getDatabase(Bun.env.DATABASE || 'sqlite.db') :
-    // @ts-ignore
-    globalThis['$sqlite'] ??= getDatabase(Bun.env.DATABASE_DEV || ':memory:');
+    globalThis.$sqlite ??= getDatabase(Bun.env.DATABASE_DEV || ':memory:');
 
 export default db;
 export { getDatabase };

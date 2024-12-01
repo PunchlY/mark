@@ -1,37 +1,22 @@
-import { plugin, serve, type Server } from 'bun';
-import { Job } from 'subscribe/job';
-import app from './server';
-import staticRouter from './server/static';
+import './format';
+import { Job } from 'subscribe';
 
-plugin({
-    name: 'module',
+const entrypoint = process.argv[2];
+const job = await Job.entry(entrypoint);
+
+Bun.plugin({
+    name: 'mark:job',
     setup(build) {
-        build.module('mark:subscribe', async () => {
-            return {
-                exports: await import('subscribe'),
-                loader: 'object',
-            };
-        });
+        build.module('mark:job', () => ({
+            exports: { default: job },
+            loader: 'object',
+        }));
     },
 });
 
-const env = {
-    EMAIL: Bun.env.EMAIL ?? 'admin',
-    PASSWORD: Bun.env.PASSWORD ?? 'adminadmin',
-    SUBSCRIBE: await Job.entry(process.argv[2]),
-};
-const server = serve({
-    development: process.env.NODE_ENV !== 'production',
+(await import('./server')).default.listen({
     // port: Bun.env.PORT,
     hostname: Bun.env.HOSTNAME,
-    static: staticRouter,
-    fetch: app.fetch,
 });
 
-Object.assign(server, env);
-
-type Env = typeof env & Server;
-
-declare global {
-    interface Bindings extends Env { }
-}
+job.timer.start();
