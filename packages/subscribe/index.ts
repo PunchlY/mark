@@ -112,7 +112,13 @@ const insertItemStmt = db.query<null, [key: string, url: string | null, title: s
 const findFeedUpdatedStmt = db.query<{ id: number, url: string, ids: string, plugins: string, refresh: number; }, []>(`SELECT id, url, plugins, ids, refresh FROM Feed WHERE refresh>0 AND (ifnull(updatedAt,1) OR refresh<=unixepoch("now")-updatedAt)`);
 const findFeedFragmentStmt = db.query<{ id: number, url: string, ids: string, plugins: string; }, [id: number]>(`SELECT id, url, plugins, ids FROM Feed WHERE id=?`);
 
-class Feed {
+const findCategoriesStmt = db.query<{ name: string; }, []>('SELECT name FROM Category');
+const findCategoryStmt = db.query<{ id: number; }, [name: string]>(`SELECT id FROM Category WHERE name=?`);
+const insertCategoryStmt = db.query<{ id: number; }, [name: string]>(`INSERT INTO Category (name) VALUES (?) RETURNING id`);
+
+const findFeedsStmt = db.query<{ id: number, title: string | null, url: string, homePage: string | null, category: string; }, []>('SELECT Feed.id, title, url, homePage, name category FROM Feed LEFT JOIN Category ON Feed.categoryId=Category.id');
+const insertFeedStmt = db.query<{ id: number; }, [url: string, categoryId: number]>(`INSERT INTO Feed (url,categoryId) VALUES (?,?) RETURNING id`);
+const findFeedStmt = db.query<unknown, [id: number]>('SELECT Feed.id, title, url, homePage, refresh, markRead, clean, plugins, name category FROM Feed LEFT JOIN Category ON Feed.categoryId=Category.id WHERE Feed.id=?').as(class Feed {
     declare id: number;
     declare title: string | null;
     declare url: string;
@@ -129,17 +135,27 @@ class Feed {
             plugins: JSON.parse(plugins) as Plugin.Options,
         };
     }
-}
-
-const findCategoriesStmt = db.query<{ name: string; }, []>('SELECT name FROM Category');
-const findCategoryStmt = db.query<{ id: number; }, [name: string]>(`SELECT id FROM Category WHERE name=?`);
-const insertCategoryStmt = db.query<{ id: number; }, [name: string]>(`INSERT INTO Category (name) VALUES (?) RETURNING id`);
-
-const findFeedsStmt = db.query<{ id: number, title: string | null, url: string, homePage: string | null, category: string; }, []>('SELECT Feed.id, title, url, homePage, name category FROM Feed LEFT JOIN Category ON Feed.categoryId=Category.id');
-const insertFeedStmt = db.query<{ id: number; }, [url: string, categoryId: number]>(`INSERT INTO Feed (url,categoryId) VALUES (?,?) RETURNING id`);
-const findFeedStmt = db.query<unknown, [id: number]>('SELECT Feed.id, title, url, homePage, refresh, markRead, clean, plugins, name category FROM Feed LEFT JOIN Category ON Feed.categoryId=Category.id WHERE Feed.id=?').as(Feed);
+});
 const deleteFeedStmt = db.query<{ id: number; }, [id: number]>(`DELETE FROM Feed WHERE id=? RETURNING id`);
 const updateFeedOptionsStmt = db.query<{ id: number; }, { id: number, url: string | null, categoryId: number | null, refresh: number | null, markRead: number | null, clean: number | null, plugins: string | null; }>(`UPDATE Feed SET url=ifnull($url,url),categoryId=ifnull($categoryId,categoryId),refresh=ifnull($refresh,refresh),markRead=ifnull($markRead,markRead),clean=ifnull($clean,clean),plugins=ifnull($plugins,plugins) WHERE id=$id RETURNING id`);
+const findFeedItemsStmt = db.query<{ title: string, homePage: string | null; }, [id: number]>('SELECT title, homePage FROM Feed WHERE id=?');
+const itemsStmt = db.query<unknown, [id: number, read: boolean | null, star: boolean | null, limit: number, offset: number]>('SELECT key id, title, url, authors, contentHtml content_html, ifnull(datePublished, createdAt) publishedAt FROM Item WHERE feedId=? AND ifnull(read=?,1) AND ifnull(star=?,1) ORDER BY id DESC LIMIT ? OFFSET ?').as(class {
+    declare id: string;
+    declare title: string | null;
+    declare url: string | null;
+    declare authors: string | null;
+    declare content_html: string | null;
+    declare publishedAt: number;
+
+    toJSON() {
+        const { publishedAt, authors, ...data } = this;
+        return {
+            ...data,
+            author: authors ? JSON.parse(authors) as { name: string; }[] : null,
+            date_published: new Date(publishedAt * 1000).toISOString(),
+        };
+    }
+});
 
 class Job extends Helper {
     errCountList = new Map<number, [number, number]>();
@@ -168,22 +184,22 @@ class Job extends Helper {
         } = await super.fetch(url, plugins.fetch);
         const newIds = [];
         for (const item of items) {
+            const key = item.id;
             if (!ids.has(item.id) && !findItemByKeyStmt.get(item.id, id))
-                await this.#insert(id, url, item, home_page_url ?? undefined, plugins.rewrite);
-            newIds.push(item.id);
+                await this.#insert(id, url, item, home_page_url ?? undefined, plugins);
+            newIds.push(key);
         }
         return updateFeedStmt.get(title, home_page_url ?? null, JSON.stringify(newIds), id);
     }
-    async #insert(feedId: number, feedUrl: string, item: JSONFeed.Item, homePage?: string, plugins?: Plugin.Options) {
+    async #insert(feedId: number, feedUrl: string, item: JSONFeed.Item, homePage: string | undefined, plugins: Plugin.Options) {
         const key = item.id, date_published = item.date_published?.toISOString() ?? null;
         const {
             url,
             title,
             content_html,
             authors,
-        } = await super.rewrite(feedUrl, homePage, item, plugins?.rewrite);
+        } = await super.rewrite(feedUrl, homePage, item, plugins.rewrite);
         insertItemStmt.get(key, url ?? null, title ?? null, content_html ?? null, date_published, (authors && JSON.stringify(authors)) ?? null, feedId);
-        return key;
     }
     refresh = db.transaction(async (id: number) => {
         const feed = findFeedFragmentStmt.get(id);
@@ -193,15 +209,15 @@ class Job extends Helper {
         return await this.#refresh(id, url, new Set(JSON.parse(ids)), JSON.parse(plugins));
     });
     async testSubscribe(id: number) {
-        const feedFragment = findFeedFragmentStmt.get(id);
-        if (!feedFragment)
+        const feed = findFeedFragmentStmt.get(id);
+        if (!feed)
             return null;
-        const { url, plugins } = feedFragment;
-        return this.test(url, JSON.parse(plugins));
+        const { url, plugins } = feed;
+        return await this.test(url, JSON.parse(plugins));
     }
-    async test(url: string, options?: Plugin.Options) {
-        const feed = await super.fetch(url, options?.fetch);
-        feed.items = await Promise.all(feed.items.map((item) => super.rewrite(url, feed.home_page_url ?? undefined, item, options?.rewrite)));
+    async test(url: string, plugins?: Plugin.Options) {
+        const feed = await super.fetch(url, plugins?.fetch);
+        feed.items = await Promise.all(feed.items.map((item) => super.rewrite(url, feed.home_page_url ?? undefined, item, plugins?.rewrite)));
         return feed;
     }
     static async entry(entrypoint?: string) {
@@ -243,6 +259,12 @@ class Job extends Helper {
             return;
         return { id: feedId, category };
     });
+    items(id: number) {
+        const feed = findFeedItemsStmt.get(id);
+        if (!feed)
+            return;
+        return { ...feed, items: itemsStmt.all(id, null, null, 10, 0).map((item) => item.toJSON()) };
+    }
 }
 
 export { Plugin, Job };

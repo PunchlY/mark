@@ -33,6 +33,7 @@ export default new Elysia({ name: 'api', prefix: '/api' })
             }),
         })
         .get('/test', async ({ params: { id }, error }) => await subscribe.testSubscribe(id) || error(404))
+        .get('/entries', async ({ params: { id }, error }) => subscribe.items(id) || error(404))
     )
     .get('/options', () => subscribe.options)
     .post('/test', async ({ body: { url, ...options }, set }) => {

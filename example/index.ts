@@ -33,6 +33,17 @@ export default new Plugin()
     .onRewrite('remove', (item, selector) => {
         item.content_html &&= new HTMLRewriter().on(selector, { element(e) { e.remove(); } }).transform(item.content_html);
     })
+    .onRewrite('lazyload', (item, attribute) => {
+        item.content_html &&= new HTMLRewriter()
+            .on(`img[${attribute}]`, {
+                element(element) {
+                    const src = element.getAttribute(attribute)!;
+                    element.removeAttribute(attribute);
+                    element.setAttribute('src', src);
+                },
+            })
+            .transform(item.content_html);
+    })
     .onRewrite('rewrite-image-url', (item, replacement, feedUrl, homePage) => {
         item.content_html &&= new HTMLRewriter()
             .on('img[src]', {
