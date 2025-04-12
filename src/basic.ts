@@ -11,7 +11,6 @@ export class BasicAuth {
         const auth = headers.get('Authorization');
         if (auth && auth.startsWith('Basic ')) {
             const [username, password] = atob(auth.slice(6)).split(':');
-            console.log(username, password);
             if (username === Bun.env.EMAIL && password === Bun.env.PASSWORD)
                 return;
         }
