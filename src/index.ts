@@ -11,7 +11,8 @@ import html from './index.html';
 export class Main {
 
     constructor(refreshService: Refresh) {
-        refreshService.beginAutoRefresh();
+        if (process.env.NODE_ENV === 'production')
+            refreshService.beginAutoRefresh();
     }
 
     @Mount('/')

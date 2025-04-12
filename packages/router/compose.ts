@@ -81,11 +81,8 @@ async function onHandle(ctx: Context, { instance, propertyKey, paramtypes, isGen
                 default:
                     throw new TypeError();
             }
-            if (typeof type.key === 'string') {
-                if (!Object.hasOwn(value, type.key))
-                    throw new TypeError(`Missing key ${type.key}`);
-                value = value[type.key];
-            }
+            if (typeof type.key === 'string') 
+                value = Object.hasOwn(value, type.key) ? value[type.key] : undefined;
             if (TypeGuard.IsSchema(type.schema)) {
                 value = type.operations ?
                     Parse(type.operations, type.schema, value) :
