@@ -13,7 +13,7 @@ export namespace Module {
         Type.Literal('all'),
         Type.Integer({ minimum: 1 }),
         Type.Array(Type.Integer({ minimum: 1 })),
-    ], { default: 10 });
+    ], { default: 'all' });
 
     export type Subscribe = StaticDecode<typeof Subscribe>;
     export const Subscribe = Type.Object({
