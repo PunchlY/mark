@@ -94,13 +94,13 @@ export namespace Module {
         }
     }
 
-    const idSchema = Type.Transform(Type.TemplateLiteral([Type.Literal('tag:google.com,2005:reader/item/'), Type.Number({ multipleOf: 16 })]))
+    const idSchema = Type.Transform(Type.String({ pattern: '^tag:google.com,2005:reader/item/[0-9a-fA-F]+$' }))
         .Decode((s) => parseInt(s.substring(32), 16))
         .Encode((id) => `tag:google.com,2005:reader/item/${id.toString(16) as any}`);
 
     export type Ids = StaticDecode<typeof Ids>;
     export const Ids = Type.Object({
-        i: Type.Union([Type.Array(idSchema), idSchema, Type.Array(Type.Integer()), Type.Integer()]),
+        i: Type.Array(idSchema),
     });
 
     export type EditIds = StaticDecode<typeof EditIds>;
