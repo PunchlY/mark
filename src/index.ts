@@ -1,22 +1,20 @@
-import './format';
-import { Job } from 'subscribe';
+import { Mount, Controller } from 'router';
+import { API, Refresh } from './api';
+import { FeedBin } from './feedbin';
+import { GoogleReader } from './greader';
+import html from './index.html';
 
-const entrypoint = process.argv[2];
-const job = await Job.entry(entrypoint);
+@Mount('/api', API)
+@Mount('/feedbin', FeedBin)
+@Mount('/greader', GoogleReader)
+@Controller()
+export class Main {
 
-Bun.plugin({
-    name: 'mark:job',
-    setup(build) {
-        build.module('mark:job', () => ({
-            exports: { default: job },
-            loader: 'object',
-        }));
-    },
-});
+    constructor(refreshService: Refresh) {
+        refreshService.beginAutoRefresh();
+    }
 
-(await import('./server')).default.listen({
-    // port: Bun.env.PORT,
-    hostname: Bun.env.HOSTNAME,
-});
+    @Mount('/')
+    app = html;
 
-job.timer.start();
+}

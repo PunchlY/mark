@@ -1,24 +1,23 @@
 {
   "type": "module",
-  "version": "4.0.0",
+  "version": "5.0.0",
   "exports": {
     "types": "./lib.d.ts"
   },
   "scripts": {
-    "dev": "clear && NODE_ENV=development bun run --hot src/index.ts",
-    "start": "clear && NODE_ENV=production bun run src/index.ts",
-    "build": "NODE_ENV=production bun build src/index.ts --target=bun --minify --outfile=dist/mark.js"
+    "dev": "NODE_ENV=development bun run --watch src/setup.ts",
+    "start": "NODE_ENV=production bun run src/setup.ts"
   },
   "workspaces": [
     "packages/*"
   ],
   "dependencies": {
-    "@elysiajs/jwt": "https://github.com/elysiajs/elysia-jwt",
     "@rgrove/parse-xml": "^4.2.0",
-    "elysia": "^1.1.25"
+    "@sinclair/typebox": "^0.34.33",
+    "jose": "^6.0.10",
+    "reflect-metadata": "^0.2.2"
   },
   "devDependencies": {
     "@types/bun": "latest"
-  },
-  "packageManager": "npm@10.7.0+sha1.c87e0bbb7a53422670e423d0198120760f67c3b7"
+  }
 }

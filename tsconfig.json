@@ -4,6 +4,8 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    // "strictPropertyInitialization": false,
     "strict": true,
     "noEmit": true,
     "jsx": "react-jsx",
@@ -13,9 +15,6 @@
       ],
       "@rgrove/parse-xml": [
         "./node_modules/@rgrove/parse-xml/src/index.ts",
-      ],
-      "@elysiajs/jwt": [
-        "./node_modules/@elysiajs/jwt/src/index.ts",
       ],
     },
   },

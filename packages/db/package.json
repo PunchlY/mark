@@ -1,5 +1,0 @@
-{
-  "name": "db",
-  "type": "module",
-  "main": "db.ts"
-}

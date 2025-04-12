@@ -1,0 +1,7 @@
+{
+  "name": "router",
+  "type": "module",
+  "exports": {
+    ".": "./index.ts"
+  }
+}
