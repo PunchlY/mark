@@ -96,7 +96,7 @@ export namespace Module {
 
     const idSchema = Type.Transform(Type.String({ pattern: '^tag:google.com,2005:reader/item/[0-9a-fA-F]+$' }))
         .Decode((s) => parseInt(s.substring(32), 16))
-        .Encode((id) => `tag:google.com,2005:reader/item/${id.toString(16) as any}`);
+        .Encode((id) => `tag:google.com,2005:reader/item/${id.toString(16)}`);
 
     export type Ids = StaticDecode<typeof Ids>;
     export const Ids = Type.Object({

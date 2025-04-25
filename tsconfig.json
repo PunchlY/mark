@@ -10,9 +10,6 @@
     "noEmit": true,
     "jsx": "react-jsx",
     "paths": {
-      "package.json": [
-        "./package.json",
-      ],
       "@rgrove/parse-xml": [
         "./node_modules/@rgrove/parse-xml/src/index.ts",
       ],

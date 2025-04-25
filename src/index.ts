@@ -1,5 +1,6 @@
-import { Mount, Controller } from 'router';
-import { API, Refresh } from './api';
+import { Mount, Controller, Route } from 'router';
+import { Refresh } from './refresh';
+import { API } from './api';
 import { FeedBin } from './feedbin';
 import { GoogleReader } from './greader';
 import html from './index.html';
@@ -12,7 +13,7 @@ export class Main {
 
     constructor(refreshService: Refresh) {
         if (process.env.NODE_ENV === 'production')
-            refreshService.beginAutoRefresh();
+            refreshService.enableAutoRefresh();
     }
 
     @Mount('/')

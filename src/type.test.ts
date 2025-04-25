@@ -13,7 +13,7 @@ test('url', () => {
 });
 
 test('attribute-name', () => {
-    FormatRegistry.Set('attribute-name', RegExp.prototype.test.bind(/^[^ \n\r\t\f/>=]+$/));
+    FormatRegistry.Set('attribute-name', RegExp.prototype.test.bind(/^[^ \s/>=]+$/));
     const schema = Type.String({ format: 'attribute-name' });
 
     expect(Check(schema, '')).toBeFalse();

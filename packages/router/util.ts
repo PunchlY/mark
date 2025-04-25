@@ -75,9 +75,9 @@ function getMethodType(value: unknown) {
 function getStack() {
     const store = {} as { stack: string; };
     Error.captureStackTrace(store);
-    const match = store.stack.match(/(?<=\(bun:wrap.+?\s+at )(.*?)(?=\n)/s);
+    const match = store.stack.match(/(?<=\(bun:wrap.+?\s+at ).*?(?=\n)/s);
     if (!match)
-        return undefined;
+        return;
     return match[0];
 }
 

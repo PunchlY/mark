@@ -53,12 +53,18 @@ class Main {
 
     @Route('GET', '/stream')
     *[Symbol.iterator]() {
+        const controller: ReadableStreamDefaultController = yield;
         yield 'A';
         yield 'B';
+        controller.close();
         yield 'C';
     }
+
 }
 
 Bun.serve({
-    routes: routes(Main)
+    routes: routes(Main),
+    fetch(request, server) {
+        return new Response(null, { status: 404 });
+    },
 });

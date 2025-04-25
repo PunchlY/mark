@@ -55,19 +55,19 @@ export class FeedBin {
             .map(({ id }) => id)
             .toArray();
     }
-    @Route('DELETE', '/unread_entries.json')
-    read(@Body('unread_entries', { operations: ['Assert'] }) entries: Module.Ids) {
-        return sql`UPDATE Item SET read=${true} WHERE id IN (SELECT value from json_each(${JSON.stringify(entries)})) RETURNING id`
+    #read(read: boolean, entries: Module.Ids) {
+        return sql`UPDATE Item SET read=${read} WHERE id IN (SELECT value from json_each(${JSON.stringify(entries)})) RETURNING id`
             .iterate<{ id: number; }>()
             .map(({ id }) => id)
             .toArray();
     }
+    @Route('DELETE', '/unread_entries.json')
+    read(@Body('unread_entries', { operations: ['Assert'] }) entries: Module.Ids) {
+        return this.#read(true, entries);
+    }
     @Route('POST', '/unread_entries.json')
     unread(@Body('unread_entries', { operations: ['Assert'] }) entries: Module.Ids) {
-        return sql`UPDATE Item SET read=${false} WHERE id IN (SELECT value from json_each(${JSON.stringify(entries)})) RETURNING id`
-            .iterate<{ id: number; }>()
-            .map(({ id }) => id)
-            .toArray();
+        return this.#read(false, entries);
     }
 
     @Route('GET', '/starred_entries.json')
@@ -77,19 +77,19 @@ export class FeedBin {
             .map(({ id }) => id)
             .toArray();
     }
-    @Route('DELETE', '/starred_entries.json')
-    unstar(@Body('starred_entries', { operations: 'Assert' }) entries: Module.Ids) {
-        return sql`UPDATE Item SET star=${false} WHERE id IN (SELECT value from json_each(${JSON.stringify(entries)})) RETURNING id`
+    #star(star: boolean, entries: Module.Ids) {
+        return sql`UPDATE Item SET star=${star} WHERE id IN (SELECT value from json_each(${JSON.stringify(entries)})) RETURNING id`
             .iterate<{ id: number; }>()
             .map(({ id }) => id)
             .toArray();
     }
+    @Route('DELETE', '/starred_entries.json')
+    unstar(@Body('starred_entries', { operations: 'Assert' }) entries: Module.Ids) {
+        return this.#star(false, entries);
+    }
     @Route('POST', '/starred_entries.json')
     star(@Body('starred_entries', { operations: 'Assert' }) entries: Module.Ids) {
-        return sql`UPDATE Item SET star=${true} WHERE id IN (SELECT value from json_each(${JSON.stringify(entries)})) RETURNING id`
-            .iterate<{ id: number; }>()
-            .map(({ id }) => id)
-            .toArray();
+        return this.#star(true, entries);
     }
 
     @Route('GET', '/entries.json')

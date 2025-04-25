@@ -3,5 +3,9 @@
   "type": "module",
   "exports": {
     ".": "./index.ts"
+  },
+  "dependencies": {
+    "@sinclair/typebox": "latest",
+    "reflect-metadata": "latest"
   }
 }
