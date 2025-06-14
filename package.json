@@ -14,7 +14,8 @@
   "dependencies": {
     "@rgrove/parse-xml": "^4.2.0",
     "@sinclair/typebox": "latest",
-    "jose": "^6.0.10"
+    "jose": "^6.0.11",
+    "router": "https://github.com/PunchlY/router"
   },
   "devDependencies": {
     "@types/bun": "latest"

@@ -19,7 +19,7 @@ export namespace Module {
 }
 
 @Use(BasicAuth)
-@Controller('/v2')
+@Controller({ prefix: '/v2' })
 export class FeedBin {
     @Route('GET', '/authentication.json')
     authentication() {
