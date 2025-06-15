@@ -264,8 +264,10 @@ export class Refresh {
             FROM Feed
             WHERE
                 refresh IS NOT NULL
-                AND (ifnull(updatedAt,1)
-                OR refresh<=unixepoch("now")-updatedAt)`
+                AND (
+                    ifnull(updatedAt,1)
+                    OR refresh<=unixepoch("now")-updatedAt
+                )`
                 .iterate<{ id: number, url: string, refresh: number, plugins: string; }>()
             ) {
                 const errCount = this.#errorRetryTracker.get(id);

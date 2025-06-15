@@ -166,19 +166,17 @@ export class API {
 
     @Route('PUT', '/feeds', { status: 204 })
     async refresh(@Query('id') id: Module.Ids) {
-        const resultList = await Promise.allSettled(
-            sql`
-            SELECT id, url, plugins
-            FROM Feed
-            WHERE
-                ${Array.isArray(id) ? sql`id IN (${join(id)})` : sql`id=${id}`}`
-                .iterate<{ id: number, url: string, plugins: string; }>()
-                .map(async ({ id, url, plugins }) => {
-                    await this.refreshService.run(id, url, JSON.parse(plugins));
-                })
-        );
         let hasError = false;
-        for (const result of resultList) {
+        for (const result of await Promise.allSettled(sql`
+        SELECT id, url, plugins
+        FROM Feed
+        WHERE
+            ${Array.isArray(id) ? sql`id IN (${join(id)})` : sql`id=${id}`}`
+            .iterate<{ id: number, url: string, plugins: string; }>()
+            .map(async ({ id, url, plugins }) => {
+                await this.refreshService.run(id, url, JSON.parse(plugins));
+            })
+        )) {
             if (result.status === 'fulfilled')
                 continue;
             hasError = true;

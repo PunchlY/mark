@@ -33,7 +33,7 @@
 
     "reflect-metadata": ["reflect-metadata@0.2.2", "", {}, "sha512-urBwgfrvVP/eAyXx4hluJivBKzuEbSQs9rKWCrCkbSxNv8mxPcUZKeuoF3Uy4mJl3Lwprp6yy5/39VWigZ4K6Q=="],
 
-    "router": ["router@github:PunchlY/router#22c90f0", { "dependencies": { "@sinclair/typebox": "latest", "reflect-metadata": "latest" }, "peerDependencies": { "typescript": "^5.8.3" } }, "PunchlY-router-22c90f0"],
+    "router": ["router@github:PunchlY/router#b07bcea", { "dependencies": { "@sinclair/typebox": "latest", "reflect-metadata": "latest" }, "peerDependencies": { "typescript": "^5.8.3" } }, "PunchlY-router-b07bcea"],
 
     "typescript": ["typescript@5.8.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-p1diW6TqL9L07nNxvRMM7hMMw4c5XOo/1ibL4aAIGmSAt9slTE1Xgw5KWuof2uTOvCg9BY7ZRi+GaF+7sfgPeQ=="],
 
