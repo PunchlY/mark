@@ -1,10 +1,9 @@
 import { Controller, Hook } from 'router';
-import { HTTPResponseError } from './error';
 
 @Controller()
 export class BasicAuth {
 
-    @Hook('beforeHandle')
+    @Hook('request')
     async basicAuth({ headers }: Request) {
         if (process.env.NODE_ENV !== 'production')
             return;
@@ -14,7 +13,7 @@ export class BasicAuth {
             if (username === Bun.env.EMAIL && password === Bun.env.PASSWORD)
                 return;
         }
-        throw new HTTPResponseError('Unauthorized', { status: 401, headers: { 'www-authenticate': 'Basic realm="Secure Area"' } });
+        return new Response('Unauthorized', { status: 401, headers: { 'www-authenticate': 'Basic realm="Secure Area"' } });
     }
 
 }

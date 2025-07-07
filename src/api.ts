@@ -1,8 +1,7 @@
-import { Body, Route, Use, Query, Controller } from 'router';
+import { Body, Route, Use, Query, Controller, Inject } from 'router';
 import { Type, type StaticDecode } from '@sinclair/typebox';
 import { empty, join, sql } from './db';
 import { BasicAuth } from './basic';
-import { HTTPResponseError } from './error';
 import { Refresh } from './refresh';
 
 export namespace Module {
@@ -98,9 +97,8 @@ export namespace Module {
 @Use(BasicAuth)
 @Controller()
 export class API {
-
-    constructor(private refreshService: Refresh) {
-    }
+    @Inject()
+    readonly refreshService!: Refresh;
 
     @Route('GET', '/list')
     list() {
@@ -183,7 +181,7 @@ export class API {
             console.error('[refresh] %o\n%o', new Date(), result.reason);
         }
         if (hasError)
-            throw new HTTPResponseError('Failed to refresh feeds');
+            return new Response('Failed to refresh feeds', { status: 500 });
         return true;
     }
 

@@ -1,11 +1,21 @@
 import { test, expect, afterAll } from 'bun:test';
 import { JSONFeed } from './jsonfeed';
-import APP from './setup';
-import type { API, Module } from './api';
+import { API, Module } from './api';
+import { Controller, Mount, routes } from 'router';
+import { FormatRegistry } from '@sinclair/typebox';
 
 namespace api {
 
-    const server = Bun.serve({ ...APP, port: 0 });
+    FormatRegistry.Set('url', URL.canParse);
+    FormatRegistry.Set('attribute-name', RegExp.prototype.test.bind(/^[^ \s/>=]+$/));
+
+    @Controller()
+    class APP {
+        @Mount()
+        readonly api!: API;
+    }
+
+    const server = Bun.serve({ routes: routes(APP), port: 0 });
 
     server.unref();
 

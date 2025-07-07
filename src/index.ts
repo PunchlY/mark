@@ -1,22 +1,25 @@
-import { Mount, Controller, Route } from 'router';
+import { Mount, Controller, Route, Static } from 'router';
 import { Refresh } from './refresh';
 import { API } from './api';
 import { FeedBin } from './feedbin';
 import { GoogleReader } from './greader';
 import html from './index.html';
 
-@Mount('/api', API)
-@Mount('/feedbin', FeedBin)
-@Mount('/greader', GoogleReader)
 @Controller()
 export class Main {
+    @Mount()
+    readonly api!: API;
+    @Mount()
+    readonly feedbin!: FeedBin;
+    @Mount()
+    readonly greader!: GoogleReader;
 
     constructor(refreshService: Refresh) {
         if (process.env.NODE_ENV === 'production')
             refreshService.enableAutoRefresh();
     }
 
-    @Mount('/')
+    @Static('/')
     app = html;
 
 }

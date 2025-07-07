@@ -3,9 +3,8 @@
 
 import { Type, type StaticDecode } from '@sinclair/typebox';
 import { empty, join, sql } from './db';
-import { Body, Route, Mount, Store, Hook, Query, Controller } from 'router';
+import { Body, Route, Mount, Store, Hook, Query, Controller, Inject } from 'router';
 import { JWT } from './jwt';
-import { HTTPResponseError } from './error';
 
 export namespace Module {
     export type Login = StaticDecode<typeof Login>;
@@ -131,21 +130,24 @@ export namespace Module {
 
 @Controller()
 class Reader {
-    @Hook('beforeHandle')
-    async online({ method, headers }: Request, jwt: JWT<{ Email: string; }>, store: Store<{ token: string, username: string; }>) {
+    @Inject()
+    readonly jwt!: JWT<{ Email: string; }>;
+
+    @Hook('request')
+    async online({ method, headers }: Request, store: Store<{ token: string, username: string; }>) {
         if (method === 'OPTIONS')
             return;
         const auth = headers.get('Authorization');
         if (auth && auth.startsWith('GoogleLogin auth=')) try {
             const token = auth.substring(17);
-            const { Email: username } = await jwt.verify(token);
+            const { Email: username } = await this.jwt.verify(token);
             if (username === Bun.env.EMAIL) {
                 store.token = token;
                 store.username = username;
                 return;
             }
         } catch { }
-        throw new HTTPResponseError('Unauthorized', { status: 401 });
+      return new Response('Unauthorized', { status: 401 });
     }
     @Route('GET', '/user-info')
     user(@Store('username') username: string) {
@@ -327,14 +329,19 @@ class Reader {
     }
 }
 
-@Mount('/reader/api/0', Reader)
 @Controller()
 export class GoogleReader {
+    @Mount('/reader/api/0')
+    readonly reader!: Reader;
+
+    @Inject()
+    readonly jwt!: JWT<{ Email: string; }>;
+
     @Route('POST', '/accounts/ClientLogin')
-    async login(@Body({ operations: 'Assert' }) { Email, Passwd }: Module.Login, jwt: JWT<{ Email: string; }>) {
+    async login(@Body({ operations: 'Assert' }) { Email, Passwd }: Module.Login) {
         if (Email !== Bun.env.EMAIL || Passwd !== Bun.env.PASSWORD)
-            throw new HTTPResponseError('Unauthorized', { status: 401 });
-        const token = await jwt.sign({ Email });
+            return new Response('Unauthorized', { status: 401 });
+        const token = await this.jwt.sign({ Email });
         return `SID=${token}\nLSID=none\nAuth=${token}`;
     }
 }

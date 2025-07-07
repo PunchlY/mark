@@ -272,7 +272,7 @@ export class Refresh {
             ) {
                 const errCount = this.#errorRetryTracker.get(id);
                 try {
-                    if (errCount && Date.now() - errCount.lastRetry > Math.min((1 << errCount.count) * interval, refresh))
+                    if (errCount && (Date.now() - errCount.lastRetry) / 1000 > Math.min((1 << errCount.count) * interval, refresh))
                         continue;
                     await this.run(id, url, JSON.parse(plugins));
                     this.#errorRetryTracker.delete(id);

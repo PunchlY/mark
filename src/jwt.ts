@@ -1,6 +1,5 @@
 import { SignJWT, jwtVerify, type JWTPayload } from 'jose';
 import { Injectable } from 'router';
-import { HTTPResponseError } from './error';
 
 @Injectable()
 export class JWT<T extends JWTPayload> {
@@ -14,9 +13,7 @@ export class JWT<T extends JWTPayload> {
             .setExpirationTime(this.expirationTime)
             .sign(this.secret);
     }
-    async verify(jwt?: string) {
-        if (!jwt)
-            throw new HTTPResponseError('Unauthorized', { status: 401 });
+    async verify(jwt: string) {
         const { payload } = await jwtVerify<T>(jwt, this.secret);
         return payload;
     }
