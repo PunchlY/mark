@@ -208,9 +208,9 @@ function XML(xml: string) {
     throw new Error('Invalid XML');
 }
 
-function JSONFeed(data: JSONFeed.$Input, feedUrl?: string | URL): Promise<JSONFeed>;
-function JSONFeed(data: unknown, feedUrl?: string | URL): Promise<JSONFeed>;
-async function JSONFeed(data: any, feedUrl?: string | URL): Promise<JSONFeed> {
+function JSONFeed(data: JSONFeed.$Input, feedUrl?: string): Promise<JSONFeed>;
+function JSONFeed(data: unknown, feedUrl?: string): Promise<JSONFeed>;
+async function JSONFeed(data: any, feedUrl?: string): Promise<JSONFeed> {
     if (data instanceof Response) {
         if (data.status !== 200)
             throw new Error(`${data.url} ${data.status}`);
@@ -225,8 +225,7 @@ async function JSONFeed(data: any, feedUrl?: string | URL): Promise<JSONFeed> {
     }
     data = Convert(feedSchema, Default(feedSchema, data));
     Assert(feedSchema, data);
-    if (feedUrl)
-        data.feed_url ??= typeof feedUrl === 'string' ? feedUrl : feedUrl.href;
+    data.feed_url = feedUrl;
     return Decode(feedSchema, data);
 }
 type JSONFeed = StaticDecode<typeof feedSchema>;

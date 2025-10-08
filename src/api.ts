@@ -1,6 +1,6 @@
 import { Body, Route, Use, Query, Controller, Inject } from 'router';
 import { Type, type StaticDecode } from '@sinclair/typebox';
-import { empty, join, sql } from './db';
+import { sql } from './db';
 import { BasicAuth } from './basic';
 import { Refresh } from './refresh';
 
@@ -8,38 +8,20 @@ export namespace Module {
 
     export type Ids = StaticDecode<typeof Ids>;
     export const Ids = Type.Union([
-        Type.Integer({ minimum: 1 }),
+        Type.Transform(Type.Integer({ minimum: 1 }))
+            .Decode((i) => [i])
+            .Encode(([i]) => i),
         Type.Array(Type.Integer({ minimum: 1 }), { minItems: 1 }),
     ]);
 
-    export type Plugins = StaticDecode<typeof Plugins>;
-    export const Plugins = Type.Partial(Type.Object({
-        proxy: Type.Union([Type.String({ format: 'url' }), Type.Null()]),
-        requestHeader: Type.Union([Type.Record(Type.String(), Type.String()), Type.Null()]),
-
-        jq: Type.Union([Type.String(), Type.Null()]),
-        limit: Type.Union([Type.Integer({ minimum: 0 }), Type.Null()]),
-
-        urlRewrite: Type.Union([Type.String(), Type.Null()]),
-        scraper: Type.Union([Type.String(), Type.Null()]),
-        remove: Type.Union([Type.String(), Type.Null()]),
-        rewriteImageUrl: Type.Union([Type.Partial(Type.Object({
-            name: Type.String({ format: 'attribute-name' }),
-            replacement: Type.String(),
-        })), Type.Null()]),
-    }));
-
     export type Subscribe = StaticDecode<typeof Subscribe>;
-    export const Subscribe = Type.Composite([
-        Type.Object({
-            url: Type.String({ format: 'url' }),
-            category: Type.String({ minLength: 1, default: 'Uncategorized' }),
-            refresh: Type.Union([Type.Integer({ minimum: 0 }), Type.Null()], { default: null }),
-            markRead: Type.Union([Type.Integer({ minimum: 0 }), Type.Null()], { default: null }),
-            clean: Type.Union([Type.Integer({ minimum: 0 }), Type.Null()], { default: null }),
-        }),
-        Plugins,
-    ]);
+    export const Subscribe = Type.Object({
+        url: Type.String({ format: 'url' }),
+        category: Type.String({ minLength: 1, default: 'Uncategorized' }),
+        refresh: Type.Union([Type.Integer({ minimum: 0 }), Type.Null()], { default: null }),
+        markRead: Type.Union([Type.Integer({ minimum: 0 }), Type.Null()], { default: null }),
+        clean: Type.Union([Type.Integer({ minimum: 0 }), Type.Null()], { default: null }),
+    });
 
     export class Feed {
         declare id: number;
@@ -49,13 +31,11 @@ export namespace Module {
         declare refresh: number | null;
         declare markRead: number | null;
         declare clean: number | null;
-        declare plugins: string;
         declare updatedAt: number | null;
         declare category: string;
         toJSON() {
-            const { updatedAt, plugins, ...data } = this;
+            const { updatedAt, ...data } = this;
             return {
-                ...JSON.parse(plugins) as Module.Plugins,
                 ...data,
                 updatedAt: updatedAt === null ? undefined : new Date(updatedAt * 1000),
             };
@@ -102,38 +82,39 @@ export class API {
 
     @Route('GET', '/list')
     list() {
-        return sql`SELECT id, title, url, homePage, category FROM Feed`
-            .all<{ id: number, title: string | null, url: string, homePage: string | null, category: string; }>();
+        return sql<{ id: number, title: string | null, url: string, homePage: string | null, category: string; }[]>`SELECT id, title, url, homePage, category FROM Feed`;
     }
 
     @Route('GET', '/feeds')
     feeds(@Query('id') id: Module.Ids) {
-        return sql`
-        SELECT id, title, url, homePage, refresh, markRead, clean, plugins, updatedAt, category
+        return sql<Module.Feed[]>`
+        SELECT id, title, url, homePage, refresh, markRead, clean, updatedAt, category
         FROM Feed
         WHERE
-            ${Array.isArray(id) ? sql`id IN (${join(id)})` : sql`id=${id}`}
-        ${Array.isArray(id) ? sql`LIMIT ${id.length}` : sql`LIMIT 1`}`
-            .all(Module.Feed);
+            id IN ${sql(id)}
+        ${Array.isArray(id) ? sql`LIMIT ${id.length}` : sql`LIMIT 1`}`;
     }
 
     @Route('POST', '/feeds')
-    subscribe(@Body() { url, category, refresh, markRead, clean, ...plugins }: Module.Subscribe) {
-        return sql`
-        INSERT INTO Feed (url, category, refresh, markRead, clean, plugins)
-        VALUES (${url}, ${category}, ${refresh}, ${markRead}, ${clean}, json_patch('{}',${JSON.stringify(plugins)}))
-        RETURNING id, title, url, homePage, refresh, markRead, clean, plugins, updatedAt, category`
-            .all(Module.Feed);
+    subscribe(@Body() { url, category, refresh, markRead, clean }: Module.Subscribe) {
+        return sql<Module.Feed[]>`
+        INSERT INTO Feed ${sql({
+            url,
+            category,
+            refresh,
+            markRead,
+            clean,
+        })}
+        RETURNING id, title, url, homePage, refresh, markRead, clean, updatedAt, category`;
     }
 
     @Route('DELETE', '/feeds')
     unsubscribe(@Query('id') id: Module.Ids) {
-        return sql`
+        return sql<Module.Feed[]>`
         DELETE FROM Feed
         WHERE
-            ${Array.isArray(id) ? sql`id IN (${join(id)})` : sql`id=${id}`}
-        RETURNING id, title, url, homePage, refresh, markRead, clean, plugins, updatedAt, category`
-            .all<Module.Feed>();
+            id IN ${sql(id)}
+        RETURNING id, title, url, homePage, refresh, markRead, clean, updatedAt, category`;
     }
 
     @Route('PATCH', '/feeds')
@@ -142,52 +123,43 @@ export class API {
         @Body({
             schema: Type.Partial(Module.Subscribe),
             operations: ['Clean', 'Convert', 'Assert'],
-        }) { category, url, refresh, markRead, clean, ...plugins }: Partial<Module.Subscribe>,
+        }) { category, url, refresh, markRead, clean }: Partial<Module.Subscribe>,
     ) {
-        if (typeof url !== 'undefined' && Array.isArray(id))
+        if (url !== undefined && Array.isArray(id))
             throw new Error('Cannot update all feeds with a URL');
-        return sql`
+        return sql<Module.Feed[]>`
         UPDATE Feed
-        SET ${join([
-            typeof url === 'undefined' ? empty : sql`url=${url}`,
-            typeof category === 'undefined' ? empty : sql`category=${category}`,
-            typeof refresh === 'undefined' ? empty : sql`refresh=${refresh}`,
-            typeof markRead === 'undefined' ? empty : sql`markRead=${markRead}`,
-            typeof clean === 'undefined' ? empty : sql`clean=${clean}`,
-            typeof plugins === 'undefined' ? empty : sql`plugins=json_patch(plugins,${JSON.stringify(plugins)})`,
-        ], ',')}
+        SET ${sql({
+            url,
+            category,
+            refresh,
+            markRead,
+            clean,
+        })}
         WHERE
-            ${Array.isArray(id) ? sql`id IN (${join(id)})` : sql`id=${id}`}
-        RETURNING id, title, url, homePage, refresh, markRead, clean, plugins, updatedAt, category`
-            .all<Module.Feed>();
+            id IN ${sql(id)}
+        RETURNING id, title, url, homePage, refresh, markRead, clean, updatedAt, category`;
     }
 
     @Route('PUT', '/feeds', { status: 204 })
-    async refresh(@Query('id') id: Module.Ids) {
-        let hasError = false;
-        for (const result of await Promise.allSettled(sql`
-        SELECT id, url, plugins
+    async refresh(@Query('id') ids: Module.Ids) {
+        for (const { id, url } of await sql<{ id: number, url: string; }[]>`
+        SELECT id, url
         FROM Feed
         WHERE
-            ${Array.isArray(id) ? sql`id IN (${join(id)})` : sql`id=${id}`}`
-            .iterate<{ id: number, url: string, plugins: string; }>()
-            .map(async ({ id, url, plugins }) => {
-                await this.refreshService.run(id, url, JSON.parse(plugins));
-            })
-        )) {
-            if (result.status === 'fulfilled')
-                continue;
-            hasError = true;
-            console.error('[refresh] %o\n%o', new Date(), result.reason);
+            id IN ${sql(ids)}`
+        ) try {
+            await this.refreshService.run(id, url);
+        } catch (error) {
+            console.error('[refresh] %o\n%o', new Date(), error);
         }
-        if (hasError)
-            return new Response('Failed to refresh feeds', { status: 500 });
+
         return true;
     }
 
     @Route('GET', '/entries')
     entries(@Query() { feedId, read, star, limit, page, order }: Module.QueryFilters) {
-        return sql`
+        return sql<Module.Item[]>`
         SELECT
             id,
             title,
@@ -199,16 +171,14 @@ export class API {
             read,
             star
         FROM Item
-        WHERE ${join([
-            Array.isArray(feedId) ? sql`feedId IN (${join(feedId)})` : sql`feedId=${feedId}`,
-            typeof read === 'undefined' ? empty : sql`read=${read}`,
-            typeof star === 'undefined' ? empty : sql`star=${star}`,
-        ], ' AND ')}
+        WHERE
+            feedId IN ${sql(feedId)}
+            ${read === undefined ? sql`` : sql`AND read=${read}`}
+            ${star === undefined ? sql`` : sql`AND star=${star}`}
         ORDER BY
             ${order === 'asc' ? sql`id ASC` : sql`id DESC`}
         LIMIT ${limit}
-        OFFSET ${(page - 1) * limit}`
-            .all(Module.Item);
+        OFFSET ${(page - 1) * limit}`;
     }
 
 }

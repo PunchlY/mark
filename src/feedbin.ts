@@ -2,7 +2,7 @@
 
 import { Body, Controller, Route, Query, Use } from 'router';
 import { Type, type StaticDecode } from '@sinclair/typebox';
-import { empty, join, sql } from './db';
+import { sql } from './db';
 import { BasicAuth } from './basic';
 
 export namespace Module {
@@ -28,38 +28,32 @@ export class FeedBin {
 
     @Route('GET', '/subscriptions.json')
     subscriptions() {
-        return sql`SELECT id, id feed_id, title, url feed_url, homePage site_url FROM Feed WHERE title IS NOT NULL`
-            .all<{
-                id: number;
-                feed_id: number;
-                title: string;
-                feed_url: string;
-                site_url: string;
-            }>();
+        return sql<{
+            id: number;
+            feed_id: number;
+            title: string;
+            feed_url: string;
+            site_url: string;
+        }[]>`SELECT id, id feed_id, title, url feed_url, homePage site_url FROM Feed WHERE title IS NOT NULL`;
     }
 
     @Route('GET', '/taggings.json')
     taggings() {
-        return sql`SELECT id, id feed_id, category name FROM Feed WHERE title IS NOT NULL`
-            .all<{
-                id: number;
-                feed_id: number;
-                name: string;
-            }>();
+        return sql<{
+            id: number;
+            feed_id: number;
+            name: string;
+        }[]>`SELECT id, id feed_id, category name FROM Feed WHERE title IS NOT NULL`;
     }
 
     @Route('GET', '/unread_entries.json')
-    unreadEntries() {
-        return sql`SELECT id FROM Item WHERE read=0`
-            .iterate<{ id: number; }>()
-            .map(({ id }) => id)
-            .toArray();
+    async unreadEntries() {
+        const res = await sql<{ id: number; }[]>`SELECT id FROM Item WHERE read=0`;
+        return res.map(({ id }) => id);
     }
-    #read(read: boolean, entries: Module.Ids) {
-        return sql`UPDATE Item SET read=${read} WHERE id IN (SELECT value from json_each(${JSON.stringify(entries)})) RETURNING id`
-            .iterate<{ id: number; }>()
-            .map(({ id }) => id)
-            .toArray();
+    async #read(read: boolean, entries: Module.Ids) {
+        const res = await sql<{ id: number; }[]>`UPDATE Item SET read=${read} WHERE id IN ${sql(entries)} RETURNING id`;
+        return res.map(({ id }) => id);
     }
     @Route('DELETE', '/unread_entries.json')
     read(@Body('unread_entries', { operations: ['Assert'] }) entries: Module.Ids) {
@@ -71,17 +65,13 @@ export class FeedBin {
     }
 
     @Route('GET', '/starred_entries.json')
-    starredEntries() {
-        return sql`SELECT id FROM Item WHERE star=1`
-            .iterate<{ id: number; }>()
-            .map(({ id }) => id)
-            .toArray();
+    async starredEntries() {
+        const res = await sql<{ id: number; }[]>`SELECT id FROM Item WHERE star=1`;
+        return res.map(({ id }) => id);
     }
-    #star(star: boolean, entries: Module.Ids) {
-        return sql`UPDATE Item SET star=${star} WHERE id IN (SELECT value from json_each(${JSON.stringify(entries)})) RETURNING id`
-            .iterate<{ id: number; }>()
-            .map(({ id }) => id)
-            .toArray();
+    async #star(star: boolean, entries: Module.Ids) {
+        const res = await sql<{ id: number; }[]>`UPDATE Item SET star=${star} WHERE id IN ${sql(entries)} RETURNING id`;
+        return res.map(({ id }) => id);
     }
     @Route('DELETE', '/starred_entries.json')
     unstar(@Body('starred_entries', { operations: 'Assert' }) entries: Module.Ids) {
@@ -93,8 +83,17 @@ export class FeedBin {
     }
 
     @Route('GET', '/entries.json')
-    entries(@Query({ operations: ['Default', 'Convert', 'Assert'] }) { read, starred, per_page, page }: Module.FindEntries) {
-        return sql`
+    async entries(@Query({ operations: ['Default', 'Convert', 'Assert'] }) { read, starred, per_page, page }: Module.FindEntries) {
+        const res = await sql<{
+            id: number;
+            feed_id: number;
+            title: string | null;
+            url: string | null;
+            author: string | null;
+            content: string | null;
+            publishedAt: number;
+            createdAt: number;
+        }[]>`
             SELECT
                 Item.id,
                 Feed.id feed_id,
@@ -105,35 +104,23 @@ export class FeedBin {
                 ifnull(Item.datePublished, Item.createdAt) publishedAt,
                 createdAt
             FROM Item LEFT JOIN Feed ON Item.feedId=Feed.id
-            WHERE ${join([
-            sql`Feed.title IS NOT NULL`,
-            typeof read === 'undefined' ? empty : sql`read=${read}`,
-            typeof starred === 'undefined' ? empty : sql`star=${starred}`,
-        ], ' AND ')}
+            WHERE 
+                Feed.title IS NOT NULL
+                ${read === undefined ? sql`` : sql`AND read=${read}`}
+                ${read === undefined ? sql`` : sql`AND star=${starred}`}
             ORDER BY
                 Item.id DESC
             LIMIT ${per_page}
-            OFFSET ${(page - 1) * per_page}`
-            .iterate<{
-                id: number;
-                feed_id: number;
-                title: string | null;
-                url: string | null;
-                author: string | null;
-                content: string | null;
-                publishedAt: number;
-                createdAt: number;
-            }>()
-            .map(({ title, url, publishedAt, createdAt, ...data }) => {
-                return {
-                    ...data,
-                    title: title ?? '',
-                    url: url ?? '',
-                    summary: null,
-                    published: new Date(publishedAt * 1000).toISOString(),
-                    created_at: new Date(createdAt * 1000).toISOString(),
-                };
-            })
-            .toArray();
+            OFFSET ${(page - 1) * per_page}`;
+        return res.map(({ title, url, publishedAt, createdAt, ...data }) => {
+            return {
+                ...data,
+                title: title ?? '',
+                url: url ?? '',
+                summary: null,
+                published: new Date(publishedAt * 1000).toISOString(),
+                created_at: new Date(createdAt * 1000).toISOString(),
+            };
+        });
     }
 }
